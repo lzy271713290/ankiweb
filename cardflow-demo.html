@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CardFlow · AI 驱动的 Anki 记忆卡片生成器</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.cn/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --indigo: #3d3fc7;
+    --indigo-deep: #2b2da8;
+    --indigo-soft: #eef0fb;
+    --amber: #e0a53c;
+    --amber-soft: #fdf4e3;
+    --ink: #1a1a1f;
+    --muted: #6b7280;
+    --line: #e7e5df;
+    --bg: #faf8f3;
+    --card: #ffffff;
+    --card-warm: #fdfaf3;
+  }
+  * { -webkit-font-smoothing: antialiased; }
+  html, body {
+    font-family: "Noto Sans SC", "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+  }
+  .font-mono { font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; }
+  .bg-app { background: var(--bg); }
+  .bg-card { background: var(--card); }
+  .bg-card-warm { background: var(--card-warm); }
+  .bg-indigo { background: var(--indigo); }
+  .bg-indigo-soft { background: var(--indigo-soft); }
+  .bg-amber { background: var(--amber); }
+  .bg-amber-soft { background: var(--amber-soft); }
+  .text-indigo { color: var(--indigo); }
+  .text-amber { color: var(--amber); }
+  .text-muted { color: var(--muted); }
+  .border-line { border-color: var(--line); }
+
+  /* 微妙的纸质纹理背景 */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(61, 63, 199, 0.04), transparent 40%),
+      radial-gradient(circle at 90% 80%, rgba(224, 165, 60, 0.05), transparent 45%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .relative-z { position: relative; z-index: 1; }
+
+  /* 卡片入场动画 */
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .card-enter {
+    animation: cardIn 0.4s ease-out both;
+  }
+
+  /* 3D 翻转 */
+  .flip-card {
+    perspective: 1200px;
+  }
+  .flip-inner {
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .flip-card.flipped .flip-inner {
+    transform: rotateY(180deg);
+  }
+  .flip-face {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  .flip-back {
+    position: absolute;
+    inset: 0;
+    transform: rotateY(180deg);
+  }
+
+  /* 悬停上浮 */
+  .hover-lift {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px -12px rgba(26, 26, 31, 0.18);
+  }
+
+  /* 脉冲 loading */
+  @keyframes pulseDot {
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1); }
+  }
+  .pulse-dot {
+    animation: pulseDot 1.2s ease-in-out infinite;
+  }
+
+  /* cloze 高亮 */
+  .cloze {
+    background: var(--amber-soft);
+    color: var(--amber);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    border-bottom: 2px solid var(--amber);
+  }
+
+  /* 自定义滚动条 */
+  .scroll-y::-webkit-scrollbar { width: 6px; }
+  .scroll-y::-webkit-scrollbar-track { background: transparent; }
+  .scroll-y::-webkit-scrollbar-thumb { background: #d4d1c9; border-radius: 3px; }
+
+  /* 按钮主 CTA */
+  .btn-primary {
+    background: var(--indigo);
+    color: white;
+    transition: all 0.2s ease;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--indigo-deep);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px -8px rgba(61, 63, 199, 0.6);
+  }
+  .btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .btn-ghost {
+    color: var(--muted);
+    transition: all 0.2s ease;
+  }
+  .btn-ghost:hover {
+    color: var(--ink);
+    background: rgba(0,0,0,0.04);
+  }
+
+  /* 选项 chip */
+  .chip {
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+  }
+  .chip:hover {
+    border-color: var(--indigo);
+    color: var(--indigo);
+  }
+  .chip.active {
+    background: var(--indigo);
+    border-color: var(--indigo);
+    color: white;
+  }
+
+  /* textarea 焦点态 */
+  .input-area:focus {
+    outline: none;
+    border-color: var(--indigo);
+    box-shadow: 0 0 0 3px rgba(61, 63, 199, 0.12);
+  }
+
+  /* 分割竖线（清晨书房光感） */
+  .light-beam {
+    background: linear-gradient(180deg,
+      transparent 0%,
+      rgba(224, 165, 60, 0.08) 20%,
+      rgba(224, 165, 60, 0.12) 50%,
+      rgba(224, 165, 60, 0.08) 80%,
+      transparent 100%);
+  }
+</style>
+</head>
+<body class="min-h-screen">
+  <div class="relative-z min-h-screen flex flex-col">
+
+    <!-- 顶部导航 -->
+    <header class="border-b border-line bg-card/80 backdrop-blur-sm sticky top-0 z-20">
+      <div class="max-w-[1400px] mx-auto px-6 h-14 flex items-center justify-between">
+        <!-- Logo -->
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-indigo flex items-center justify-center relative">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="14" height="16" rx="2"/>
+              <path d="M7 4v16"/>
+              <path d="M21 8v12a2 2 0 0 1-2 2H9"/>
+            </svg>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span class="text-[17px] font-bold tracking-tight">CardFlow</span>
+            <span class="text-[11px] text-muted font-mono">v0.1 · beta</span>
+          </div>
+        </div>
+
+        <!-- 中间导航 -->
+        <nav class="hidden md:flex items-center gap-1 text-[13px]">
+          <a class="btn-ghost px-3 py-1.5 rounded-md">首页</a>
+          <a class="btn-ghost px-3 py-1.5 rounded-md">我的卡组</a>
+          <a class="btn-ghost px-3 py-1.5 rounded-md">模板库</a>
+          <a class="btn-ghost px-3 py-1.5 rounded-md">帮助</a>
+        </nav>
+
+        <!-- 右侧操作 -->
+        <div class="flex items-center gap-2">
+          <button class="btn-ghost px-3 py-1.5 rounded-md text-[13px] flex items-center gap-1.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            导出 .apkg
+          </button>
+          <div class="w-8 h-8 rounded-full bg-amber-soft border border-line flex items-center justify-center text-[12px] font-semibold text-amber">L</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- 主体内容 -->
+    <main class="flex-1 max-w-[1400px] w-full mx-auto px-6 py-6 grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-6">
+
+      <!-- 左栏：输入 + 选项 -->
+      <section class="flex flex-col gap-4">
+        <!-- 标题 -->
+        <div class="flex items-baseline justify-between">
+          <div>
+            <h1 class="text-[22px] font-bold tracking-tight">从阅读到记忆</h1>
+            <p class="text-[13px] text-muted mt-1">粘贴你的学习材料，AI 帮你拆解成 Anki 卡片。</p>
+          </div>
+        </div>
+
+        <!-- 输入框 -->
+        <div class="bg-card border border-line rounded-xl p-4 shadow-sm">
+          <div class="flex items-center justify-between mb-2">
+            <label class="text-[12px] font-semibold text-muted uppercase tracking-wider">学习材料</label>
+            <div class="flex items-center gap-2">
+              <button class="text-[12px] text-muted hover:text-indigo transition">粘贴示例</button>
+              <span class="text-[11px] text-muted font-mono" id="charCount">0 字</span>
+            </div>
+          </div>
+          <textarea id="inputArea" class="input-area w-full h-56 resize-none border border-line rounded-lg px-3 py-2.5 text-[14px] leading-relaxed bg-card-warm placeholder:text-muted/60 transition"
+            placeholder="将教材、论文、笔记、字幕粘贴进来...&#10;&#10;例如：&#10;艾宾浩斯遗忘曲线揭示了记忆随时间衰退的规律，学习后 20 分钟内会忘记 42% 的内容，1 天后仅剩约 33%。&#10;间隔重复法通过在遗忘临界点安排复习，将短期记忆转化为长期记忆..."></textarea>
+        </div>
+
+        <!-- 生成选项 -->
+        <div class="bg-card border border-line rounded-xl p-4 shadow-sm space-y-4">
+          <div>
+            <label class="text-[12px] font-semibold text-muted uppercase tracking-wider block mb-2">卡片类型</label>
+            <div class="flex flex-wrap gap-2" id="typeChips">
+              <span class="chip active" data-val="mixed">混合模式</span>
+              <span class="chip" data-val="qa">问答卡</span>
+              <span class="chip" data-val="cloze">Cloze 填空</span>
+              <span class="chip" data-val="def">定义卡</span>
+            </div>
+          </div>
+
+          <div>
+            <label class="text-[12px] font-semibold text-muted uppercase tracking-wider block mb-2">生成数量</label>
+            <div class="flex flex-wrap gap-2" id="countChips">
+              <span class="chip" data-val="3">3 张</span>
+              <span class="chip active" data-val="6">6 张</span>
+              <span class="chip" data-val="10">10 张</span>
+              <span class="chip" data-val="auto">AI 自动</span>
+            </div>
+          </div>
+
+          <div>
+            <label class="text-[12px] font-semibold text-muted uppercase tracking-wider block mb-2">难度倾向</label>
+            <div class="flex items-center gap-3">
+              <input id="difficulty" type="range" min="1" max="5" value="3" class="flex-1 accent-indigo-600" style="accent-color: var(--indigo);"/>
+              <span class="text-[13px] text-muted font-mono w-12 text-right" id="difficultyLabel">中等</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 生成按钮 -->
+        <button id="generateBtn" class="btn-primary py-3 rounded-xl font-semibold text-[15px] flex items-center justify-center gap-2 shadow-sm">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3v18M3 12h18"/>
+          </svg>
+          <span id="btnText">生成卡片</span>
+        </button>
+
+        <!-- 隐私说明 -->
+        <p class="text-[11px] text-muted text-center leading-relaxed">
+          你的内容仅用于生成卡片，不会用于模型训练。<br/>
+          导出后可直接导入 Anki 桌面版 / AnkiMobile / AnkiDroid。
+        </p>
+      </section>
+
+      <!-- 右栏：卡片预览 -->
+      <section class="flex flex-col gap-4">
+        <!-- 统计条 -->
+        <div class="bg-card border border-line rounded-xl px-5 py-4 flex items-center justify-between shadow-sm">
+          <div class="flex items-center gap-6">
+            <div>
+              <div class="text-[11px] text-muted uppercase tracking-wider">已生成</div>
+              <div class="text-[22px] font-bold tracking-tight mt-0.5"><span id="statTotal">0</span> <span class="text-[13px] font-normal text-muted">张</span></div>
+            </div>
+            <div class="w-px h-10 bg-line"></div>
+            <div>
+              <div class="text-[11px] text-muted uppercase tracking-wider">问答</div>
+              <div class="text-[16px] font-semibold mt-1 text-indigo"><span id="statQA">0</span></div>
+            </div>
+            <div>
+              <div class="text-[11px] text-muted uppercase tracking-wider">Cloze</div>
+              <div class="text-[16px] font-semibold mt-1 text-amber"><span id="statCloze">0</span></div>
+            </div>
+            <div>
+              <div class="text-[11px] text-muted uppercase tracking-wider">定义</div>
+              <div class="text-[16px] font-semibold mt-1"><span id="statDef">0</span></div>
+            </div>
+          </div>
+          <div id="statusIndicator" class="hidden items-center gap-2 text-[13px] text-muted">
+            <span class="flex items-center gap-1">
+              <span class="w-1.5 h-1.5 bg-amber rounded-full pulse-dot" style="animation-delay: 0s"></span>
+              <span class="w-1.5 h-1.5 bg-amber rounded-full pulse-dot" style="animation-delay: 0.2s"></span>
+              <span class="w-1.5 h-1.5 bg-amber rounded-full pulse-dot" style="animation-delay: 0.4s"></span>
+            </span>
+            AI 正在拆解知识点...
+          </div>
+        </div>
+
+        <!-- 卡片列表容器 -->
+        <div id="cardList" class="scroll-y overflow-y-auto pr-1" style="max-height: calc(100vh - 220px);">
+
+          <!-- 空状态 -->
+          <div id="emptyState" class="flex flex-col items-center justify-center py-20 text-center">
+            <div class="relative mb-6">
+              <!-- 清晨书房意象：一摞索引卡片 -->
+              <div class="relative w-32 h-32">
+                <div class="absolute inset-x-4 top-8 h-20 bg-card-warm border border-line rounded-lg rotate-[-6deg] shadow-sm"></div>
+                <div class="absolute inset-x-3 top-6 h-20 bg-card border border-line rounded-lg rotate-[-2deg] shadow-sm"></div>
+                <div class="absolute inset-x-2 top-4 h-20 bg-card border border-line rounded-lg rotate-[3deg] shadow-md flex flex-col justify-center px-4 gap-1.5">
+                  <div class="h-1.5 bg-indigo-soft rounded w-3/4"></div>
+                  <div class="h-1.5 bg-indigo-soft rounded w-full"></div>
+                  <div class="h-1.5 bg-amber-soft rounded w-1/2"></div>
+                </div>
+              </div>
+              <!-- 光束效果 -->
+              <div class="absolute -top-4 -right-6 w-2 h-40 light-beam blur-sm"></div>
+            </div>
+            <h3 class="text-[16px] font-semibold mb-1.5">桌面已就绪，等待知识入场</h3>
+            <p class="text-[13px] text-muted max-w-xs leading-relaxed">
+              左侧粘贴你的学习材料，点击"生成卡片"，<br/>
+              CardFlow 会像整理索引卡一样，把知识拆好递给你。
+            </p>
+          </div>
+
+          <!-- 卡片将动态注入到这里 -->
+          <div id="cardsContainer" class="grid grid-cols-1 xl:grid-cols-2 gap-3"></div>
+
+          <!-- 结尾提示 -->
+          <div id="doneHint" class="hidden text-center py-6 text-[12px] text-muted">
+            <span class="inline-flex items-center gap-2">
+              <span class="w-8 h-px bg-line"></span>
+              已生成完毕 · 点击卡片可预览背面
+              <span class="w-8 h-px bg-line"></span>
+            </span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- 底部脚注 -->
+    <footer class="border-t border-line bg-card/50 py-3">
+      <div class="max-w-[1400px] mx-auto px-6 flex items-center justify-between text-[11px] text-muted">
+        <span>CardFlow · 让高质量学习方法人人可用</span>
+        <span class="font-mono">AnkiCard AI · Interactive Prototype</span>
+      </div>
+    </footer>
+  </div>
+
+<script>
+  // ========== 示例数据 ==========
+  const SAMPLE_TEXT = `艾宾浩斯遗忘曲线揭示了记忆随时间衰退的规律，学习后 20 分钟内会忘记 42% 的内容，1 天后仅剩约 33%。
+
+间隔重复法（Spaced Repetition）通过在遗忘临界点安排复习，将短期记忆转化为长期记忆。Anki 是这一方法最流行的实现工具，采用 SM-2 算法根据用户对每张卡片的反馈动态调整下次复习间隔。
+
+Cloze 填空是一种高效的卡片形式，通过遮挡关键词让大脑主动检索，比被动阅读的记忆效果高约 50%。`;
+
+  const SAMPLE_CARDS = [
+    { type: "qa", tag: "问答", front: "艾宾浩斯遗忘曲线揭示了什么规律？", back: "记忆随时间衰退：学习后 20 分钟内会忘记 42%，1 天后仅剩约 33%。" },
+    { type: "cloze", tag: "Cloze", front: "间隔重复法通过在<span class='cloze'>遗忘临界点</span>安排复习，将<span class='cloze'>短期记忆</span>转化为<span class='cloze'>长期记忆</span>。", back: "间隔重复法通过在<b>遗忘临界点</b>安排复习，将<b>短期记忆</b>转化为<b>长期记忆</b>。" },
+    { type: "def", tag: "定义", front: "什么是 Anki？", back: "Anki 是最流行的间隔重复学习软件，采用 SM-2 算法根据用户反馈动态调整卡片的下次复习间隔。" },
+    { type: "qa", tag: "问答", front: "Anki 使用什么算法调整复习间隔？", back: "SM-2 算法。根据用户对每张卡片的反馈（Again / Hard / Good / Easy）动态计算下次复习时间。" },
+    { type: "cloze", tag: "Cloze", front: "Cloze 填空通过<span class='cloze'>主动检索</span>提高记忆效果，比被动阅读高约 <span class='cloze'>50%</span>。", back: "Cloze 填空通过<b>主动检索</b>提高记忆效果，比被动阅读高约 <b>50%</b>。" },
+    { type: "qa", tag: "问答", front: "为什么 Cloze 填空比通读效果更好？", back: "因为它触发大脑的主动检索过程（active recall），迫使神经通路重新激活，从而加深记忆痕迹。" },
+    { type: "def", tag: "定义", front: "主动检索（Active Recall）是什么？", back: "主动检索指从记忆中主动提取信息，而非被动重读材料。它是所有高效学习法（Anki、费曼技巧、自我测试）的底层机制。" },
+    { type: "qa", tag: "问答", front: "SM-2 算法根据什么调整复习间隔？", back: "根据用户对卡片熟练度的反馈（Again 立即重现 / Hard 缩短间隔 / Good 正常间隔 / Easy 拉长间隔）。" },
+    { type: "cloze", tag: "Cloze", front: "学习后 <span class='cloze'>20 分钟</span> 内会忘记 <span class='cloze'>42%</span> 的内容。", back: "学习后 <b>20 分钟</b> 内会忘记 <b>42%</b> 的内容（艾宾浩斯遗忘曲线）。" },
+    { type: "def", tag: "定义", front: "什么是间隔重复（Spaced Repetition）？", back: "一种基于遗忘曲线的学习策略：在即将遗忘的时刻进行复习，可用最少的复习次数达到最长久的记忆保留。" }
+  ];
+
+  // ========== 交互逻辑 ==========
+  const inputArea = document.getElementById("inputArea");
+  const charCount = document.getElementById("charCount");
+  const generateBtn = document.getElementById("generateBtn");
+  const btnText = document.getElementById("btnText");
+  const emptyState = document.getElementById("emptyState");
+  const cardsContainer = document.getElementById("cardsContainer");
+  const statusIndicator = document.getElementById("statusIndicator");
+  const doneHint = document.getElementById("doneHint");
+  const statTotal = document.getElementById("statTotal");
+  const statQA = document.getElementById("statQA");
+  const statCloze = document.getElementById("statCloze");
+  const statDef = document.getElementById("statDef");
+  const difficulty = document.getElementById("difficulty");
+  const difficultyLabel = document.getElementById("difficultyLabel");
+
+  // 预填示例
+  inputArea.value = SAMPLE_TEXT;
+  updateCharCount();
+
+  inputArea.addEventListener("input", updateCharCount);
+  function updateCharCount() {
+    charCount.textContent = `${inputArea.value.length} 字`;
+  }
+
+  // "粘贴示例"按钮
+  document.querySelector("button.text-\\[12px\\].text-muted").addEventListener("click", () => {
+    inputArea.value = SAMPLE_TEXT;
+    updateCharCount();
+  });
+
+  // Chip 单选切换
+  function bindChips(id) {
+    const chips = document.querySelectorAll(`#${id} .chip`);
+    chips.forEach(c => {
+      c.addEventListener("click", () => {
+        chips.forEach(x => x.classList.remove("active"));
+        c.classList.add("active");
+      });
+    });
+  }
+  bindChips("typeChips");
+  bindChips("countChips");
+
+  // 难度显示
+  const DIFF_MAP = ["", "轻松", "较易", "中等", "较难", "困难"];
+  difficulty.addEventListener("input", () => {
+    difficultyLabel.textContent = DIFF_MAP[difficulty.value];
+  });
+
+  // 获取当前选择的数量
+  function getCurrentCount() {
+    const active = document.querySelector("#countChips .chip.active");
+    const val = active.dataset.val;
+    if (val === "auto") return 8;
+    return parseInt(val, 10);
+  }
+
+  // 获取当前选择的类型（用于过滤示例卡片）
+  function getCurrentType() {
+    return document.querySelector("#typeChips .chip.active").dataset.val;
+  }
+
+  // 统计
+  const stats = { total: 0, qa: 0, cloze: 0, def: 0 };
+  function updateStats() {
+    statTotal.textContent = stats.total;
+    statQA.textContent = stats.qa;
+    statCloze.textContent = stats.cloze;
+    statDef.textContent = stats.def;
+  }
+
+  // 生成单张卡片 DOM
+  function createCardDOM(card, index) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "flip-card card-enter cursor-pointer hover-lift";
+    wrapper.style.animationDelay = `${index * 90}ms`;
+    wrapper.style.minHeight = "180px";
+
+    const tagColor = card.type === "cloze" ? "bg-amber-soft text-amber"
+                    : card.type === "def" ? "bg-indigo-soft text-indigo"
+                    : "bg-indigo-soft text-indigo";
+
+    wrapper.innerHTML = `
+      <div class="flip-inner" style="min-height: 180px;">
+        <!-- 正面 -->
+        <div class="flip-face bg-card border border-line rounded-xl p-4 shadow-sm" style="min-height: 180px;">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-[11px] px-2 py-0.5 rounded-full font-medium ${tagColor}">${card.tag}</span>
+            <span class="text-[10px] text-muted font-mono">#${String(index + 1).padStart(2, "0")}</span>
+          </div>
+          <div class="text-[14.5px] leading-relaxed font-medium">${card.front}</div>
+          <div class="absolute bottom-3 right-4 text-[11px] text-muted flex items-center gap-1">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.85 1 6.54 2.79"/><polyline points="21 3 21 9 15 9"/></svg>
+            点击查看答案
+          </div>
+        </div>
+        <!-- 背面 -->
+        <div class="flip-face flip-back bg-card-warm border border-amber/40 rounded-xl p-4 shadow-sm" style="min-height: 180px; border-color: rgba(224, 165, 60, 0.4);">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-[11px] px-2 py-0.5 rounded-full font-medium bg-amber-soft text-amber">答案</span>
+            <span class="text-[10px] text-muted font-mono">#${String(index + 1).padStart(2, "0")}</span>
+          </div>
+          <div class="text-[14px] leading-relaxed text-ink">${card.back}</div>
+          <div class="absolute bottom-3 right-4 text-[11px] text-muted">再次点击返回</div>
+        </div>
+      </div>
+    `;
+
+    // 设置 flip-inner 的绝对定位容器
+    const inner = wrapper.querySelector(".flip-inner");
+    inner.style.position = "relative";
+    wrapper.style.position = "relative";
+
+    wrapper.addEventListener("click", () => {
+      wrapper.classList.toggle("flipped");
+    });
+
+    return wrapper;
+  }
+
+  // 生成流程（流式模拟）
+  let isGenerating = false;
+  generateBtn.addEventListener("click", async () => {
+    if (isGenerating) return;
+    if (!inputArea.value.trim()) {
+      inputArea.focus();
+      return;
+    }
+
+    isGenerating = true;
+    generateBtn.disabled = true;
+    btnText.textContent = "生成中...";
+    statusIndicator.classList.remove("hidden");
+    statusIndicator.classList.add("flex");
+    emptyState.classList.add("hidden");
+    cardsContainer.innerHTML = "";
+    doneHint.classList.add("hidden");
+
+    // 重置统计
+    stats.total = 0; stats.qa = 0; stats.cloze = 0; stats.def = 0;
+    updateStats();
+
+    const count = getCurrentCount();
+    const typeFilter = getCurrentType();
+    let pool = SAMPLE_CARDS.slice();
+    if (typeFilter !== "mixed") {
+      pool = pool.filter(c => c.type === typeFilter);
+      // 不够就复用
+      while (pool.length < count) pool = pool.concat(SAMPLE_CARDS.filter(c => c.type === typeFilter));
+    }
+    const cards = pool.slice(0, count);
+
+    // 流式插入
+    for (let i = 0; i < cards.length; i++) {
+      await sleep(280 + Math.random() * 180);
+      const dom = createCardDOM(cards[i], i);
+      cardsContainer.appendChild(dom);
+      stats.total++;
+      if (cards[i].type === "qa") stats.qa++;
+      else if (cards[i].type === "cloze") stats.cloze++;
+      else if (cards[i].type === "def") stats.def++;
+      updateStats();
+    }
+
+    // 完成
+    isGenerating = false;
+    generateBtn.disabled = false;
+    btnText.textContent = "重新生成";
+    statusIndicator.classList.add("hidden");
+    statusIndicator.classList.remove("flex");
+    doneHint.classList.remove("hidden");
+  });
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+</body>
+</html>
