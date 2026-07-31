@@ -1,0 +1,351 @@
+{
+  "deckName": "2026软考中级·系统集成项目管理工程师·高频考点样卡",
+  "version": "0.1.0",
+  "scope": "第3版教程知识框架 + 2023年审定考试大纲 + 公开题库高频考点核对",
+  "sources": [
+    {
+      "name": "系统集成项目管理工程师考试大纲",
+      "url": "https://www.tup.tsinghua.edu.cn/upload/books/yz/070139-01.pdf"
+    },
+    {
+      "name": "系统集成项目管理工程师教程（第3版）内容框架",
+      "url": "https://www.cnitpm.com/jcbook.html"
+    },
+    {
+      "name": "系统集成项目管理工程师公开题库考点索引",
+      "url": "https://ruankaotiku.net/subjects/system-integration-pm/"
+    }
+  ],
+  "cards": [
+    {
+      "id": "rk-xj-001",
+      "question": "项目的基本定义是什么？",
+      "answer": "项目是为创造独特的产品、服务或成果而进行的临时性工作。“临时性”表示有明确的开始和结束，“独特性”表示交付成果具有区别于日常运营的特征。",
+      "category": "项目管理概论",
+      "card_type": "def",
+      "source_section": "第9章 项目管理概论",
+      "source_url": "https://www.cnitpm.com/jcbook.html",
+      "review_status": "已初审",
+      "note": "原创表述"
+    },
+    {
+      "id": "rk-xj-002",
+      "question": "项目与运营最核心的区别是什么？",
+      "answer": "项目具有临时性，目标是形成独特成果；运营具有持续性和重复性，目标是维持组织日常业务。项目成果可以移交给运营长期使用。",
+      "category": "项目管理概论",
+      "card_type": "compare",
+      "source_section": "第9章 项目管理概论",
+      "source_url": "https://www.cnitpm.com/jcbook.html",
+      "review_status": "已初审",
+      "note": "易混概念"
+    },
+    {
+      "id": "rk-xj-003",
+      "question": "项目通常划分为哪五个过程组？",
+      "answer": "启动过程组、规划过程组、执行过程组、监控过程组、收尾过程组。过程组不是简单等同于项目阶段，在一个阶段内也可能重复出现多个过程组。",
+      "category": "项目管理概论",
+      "card_type": "sequence",
+      "source_section": "第10—14章 五大过程组",
+      "source_url": "https://www.cnitpm.com/jcbook.html",
+      "review_status": "已初审",
+      "note": "顺序记忆"
+    },
+    {
+      "id": "rk-xj-004",
+      "question": "项目章程的核心作用是什么？",
+      "answer": "正式批准项目成立，并授权项目经理在项目活动中使用组织资源。项目章程通常还记录项目目的、高层级需求、主要风险、总体里程碑和关键干系人等高层信息。",
+      "category": "启动过程组",
+      "card_type": "qa",
+      "source_section": "第10章 启动过程组",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "高频考点"
+    },
+    {
+      "id": "rk-xj-005",
+      "question": "假设条件与制约因素有什么区别？",
+      "answer": "假设条件是规划时暂时认为真实、但尚未完全证实的因素；制约因素是限制项目选择空间的客观条件。例如“客户会按时确认原型”是假设，“必须在9月30日前上线”是制约。",
+      "category": "启动过程组",
+      "card_type": "compare",
+      "source_section": "第10章 启动过程组",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "题库高频辨析"
+    },
+    {
+      "id": "rk-xj-006",
+      "question": "项目管理计划与项目文件有什么区别？",
+      "answer": "项目管理计划说明项目将如何执行、监督和收尾，包含各子管理计划和基准；项目文件用于记录和支持具体管理活动，例如需求文件、风险登记册、问题日志和经验教训登记册。二者在变更后的更新路径不同。",
+      "category": "规划过程组",
+      "card_type": "compare",
+      "source_section": "第11章 规划过程组",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "题库高频辨析"
+    },
+    {
+      "id": "rk-xj-007",
+      "question": "产品范围与项目范围分别关注什么？",
+      "answer": "产品范围关注产品、服务或成果应具备的功能和特性；项目范围关注为了交付这些功能和特性必须完成的全部工作。",
+      "category": "范围管理",
+      "card_type": "compare",
+      "source_section": "第11章 规划过程组·范围管理",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "题库高频辨析"
+    },
+    {
+      "id": "rk-xj-008",
+      "question": "需求文件与需求跟踪矩阵有什么区别？",
+      "answer": "需求文件记录业务需求、干系人需求、解决方案需求等具体内容；需求跟踪矩阵把每项需求与其来源、设计、开发、测试、验收及变更状态建立关联，用于双向跟踪和防止遗漏。",
+      "category": "范围管理",
+      "card_type": "compare",
+      "source_section": "第11章 规划过程组·范围管理",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "题库高频辨析"
+    },
+    {
+      "id": "rk-xj-009",
+      "question": "范围基准由哪三部分组成？",
+      "answer": "经过批准的项目范围说明书、工作分解结构（WBS）和WBS词典。范围基准是后续确认范围和控制范围的重要比较依据。",
+      "category": "范围管理",
+      "card_type": "qa",
+      "source_section": "第11章 规划过程组·范围管理",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "核心记忆点"
+    },
+    {
+      "id": "rk-xj-010",
+      "question": "WBS的“100%规则”是什么意思？",
+      "answer": "WBS必须包含完成项目目标所需的全部工作，包括项目管理工作；下层要素之和应完整代表其上层要素的全部范围，既不能遗漏，也不应加入项目范围之外的工作。",
+      "category": "范围管理",
+      "card_type": "def",
+      "source_section": "第11章 规划过程组·范围管理",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "WBS高频考点"
+    },
+    {
+      "id": "rk-xj-011",
+      "question": "什么是工作包？",
+      "answer": "工作包是WBS最低层级的组成部分，可对其成本和持续时间进行估算与管理。工作包还可以继续分解为便于进度安排和执行控制的活动。",
+      "category": "范围管理",
+      "card_type": "def",
+      "source_section": "第11章 规划过程组·范围管理",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "WBS高频考点"
+    },
+    {
+      "id": "rk-xj-012",
+      "question": "控制质量与确认范围的区别是什么？",
+      "answer": "控制质量关注可交付成果是否正确、是否符合质量要求，通常由项目团队先行检查；确认范围关注客户或发起人是否正式验收已核实的可交付成果。通常先控制质量，再确认范围。",
+      "category": "范围与质量管理",
+      "card_type": "compare",
+      "source_section": "第13章 监控过程组",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "案例题常考顺序"
+    },
+    {
+      "id": "rk-xj-013",
+      "question": "里程碑与普通活动有什么区别？",
+      "answer": "里程碑表示项目中的重要事件或关键节点，持续时间通常为零；活动需要消耗时间和资源来完成具体工作。",
+      "category": "进度管理",
+      "card_type": "compare",
+      "source_section": "第11章 规划过程组·进度管理",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "高频概念"
+    },
+    {
+      "id": "rk-xj-014",
+      "question": "关键路径的含义是什么？",
+      "answer": "关键路径是项目进度网络图中决定项目最短完工时间的最长路径。关键路径上的活动通常总时差最小，关键活动延误可能直接导致项目完工日期推迟。",
+      "category": "进度管理",
+      "card_type": "def",
+      "source_section": "第11章 规划过程组·进度管理",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "避免绝对化为总时差必为零"
+    },
+    {
+      "id": "rk-xj-015",
+      "question": "总时差与自由时差有什么区别？",
+      "answer": "总时差是在不延误项目完工日期或违反进度制约因素的前提下，活动可以推迟的时间；自由时差是在不推迟任何紧后活动最早开始时间的前提下，活动可以推迟的时间。",
+      "category": "进度管理",
+      "card_type": "compare",
+      "source_section": "第11章 规划过程组·进度管理",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "计算与概念高频"
+    },
+    {
+      "id": "rk-xj-016",
+      "question": "提前量与滞后量有什么区别？",
+      "answer": "提前量允许紧后活动相对于紧前活动提前开始；滞后量要求紧后活动相对于紧前活动延后一定时间。例如“测试准备在开发完成前1天开始”是提前量，“安装后稳定运行2天再压测”是滞后量。",
+      "category": "进度管理",
+      "card_type": "compare",
+      "source_section": "第11章 规划过程组·进度管理",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "情境辨析"
+    },
+    {
+      "id": "rk-xj-017",
+      "question": "成本基准与项目预算有什么关系？",
+      "answer": "成本基准是经过批准、按时间分布的项目预算，不包含管理储备；项目预算通常等于成本基准加管理储备。成本基准用于与实际绩效比较。",
+      "category": "成本管理",
+      "card_type": "qa",
+      "source_section": "第11章 规划过程组·成本管理",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "公式关系"
+    },
+    {
+      "id": "rk-xj-018",
+      "question": "应急储备与管理储备分别应对什么？",
+      "answer": "应急储备用于应对已经识别的风险，即“已知—未知”，属于成本基准；管理储备用于应对不可预见的工作，即“未知—未知”，不属于成本基准，但属于项目总预算。",
+      "category": "成本与风险管理",
+      "card_type": "compare",
+      "source_section": "第11章 规划过程组·成本管理",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "易混概念"
+    },
+    {
+      "id": "rk-xj-019",
+      "question": "挣值管理中的PV、EV、AC分别是什么？",
+      "answer": "PV是计划价值：截至某时点计划完成工作的预算价值；EV是挣值：实际完成工作的预算价值；AC是实际成本：完成这些工作实际发生的成本。",
+      "category": "挣值管理",
+      "card_type": "qa",
+      "source_section": "第13章 监控过程组·成本控制",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "计算题基础"
+    },
+    {
+      "id": "rk-xj-020",
+      "question": "成本偏差CV和进度偏差SV如何计算并判断？",
+      "answer": "CV = EV - AC：大于0表示成本节约，小于0表示成本超支。SV = EV - PV：大于0表示进度提前，小于0表示进度落后。项目结束时SV最终趋近于0。",
+      "category": "挣值管理",
+      "card_type": "qa",
+      "source_section": "第13章 监控过程组·成本控制",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "计算题公式"
+    },
+    {
+      "id": "rk-xj-021",
+      "question": "成本绩效指数CPI和进度绩效指数SPI如何计算并判断？",
+      "answer": "CPI = EV ÷ AC：大于1表示成本效率好，小于1表示成本超支。SPI = EV ÷ PV：大于1表示进度提前，小于1表示进度落后。",
+      "category": "挣值管理",
+      "card_type": "qa",
+      "source_section": "第13章 监控过程组·成本控制",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "计算题公式"
+    },
+    {
+      "id": "rk-xj-022",
+      "question": "典型偏差持续时，完工估算EAC常用什么公式？",
+      "answer": "若当前成本绩效预计继续维持，常用 EAC = BAC ÷ CPI。等价形式为 EAC = AC + (BAC - EV) ÷ CPI。",
+      "category": "挣值管理",
+      "card_type": "qa",
+      "source_section": "第13章 监控过程组·成本控制",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "计算题公式；后续增加不同假设下的EAC"
+    },
+    {
+      "id": "rk-xj-023",
+      "question": "风险与问题有什么区别？",
+      "answer": "风险是尚未发生、但一旦发生会影响项目目标的不确定事件或条件；问题是已经发生、需要立即处理的现实情况。潜在事项记录在风险登记册，已发生事项通常进入问题日志。",
+      "category": "风险管理",
+      "card_type": "compare",
+      "source_section": "第11—13章 风险管理",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "题库高频辨析"
+    },
+    {
+      "id": "rk-xj-024",
+      "question": "残余风险与次生风险有什么区别？",
+      "answer": "残余风险是实施风险应对后仍然存在的风险；次生风险是实施某项风险应对措施而直接产生的新风险。两者都应被识别、分析并记录。",
+      "category": "风险管理",
+      "card_type": "compare",
+      "source_section": "第11—13章 风险管理",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "题库高频辨析"
+    },
+    {
+      "id": "rk-xj-025",
+      "question": "负面风险（威胁）的常用应对策略有哪些？",
+      "answer": "上报、规避、转移、减轻、接受。上报适用于超出项目权限范围的威胁；接受可以是主动接受（建立应急储备）或被动接受（发生时再处理）。",
+      "category": "风险管理",
+      "card_type": "qa",
+      "source_section": "第11章 规划过程组·风险管理",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "策略记忆"
+    },
+    {
+      "id": "rk-xj-026",
+      "question": "正面风险（机会）的常用应对策略有哪些？",
+      "answer": "上报、开拓、分享、提高、接受。开拓旨在确保机会发生；提高旨在增加机会发生概率或积极影响；分享是把机会的责任分配给最能获取其收益的第三方。",
+      "category": "风险管理",
+      "card_type": "qa",
+      "source_section": "第11章 规划过程组·风险管理",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "策略记忆"
+    },
+    {
+      "id": "rk-xj-027",
+      "question": "一个影响项目基准的变更请求，通常应按什么顺序处理？",
+      "answer": "记录变更请求 → 分析对范围、进度、成本、质量和风险等的影响 → 提交相应权限主体或变更控制委员会审批 → 仅实施已批准的变更 → 更新计划、基准和项目文件 → 验证结果并沟通状态。",
+      "category": "变更管理",
+      "card_type": "sequence",
+      "source_section": "第13章 监控过程组·实施整体变更控制",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "案例题答题框架"
+    },
+    {
+      "id": "rk-xj-028",
+      "question": "变更管理计划与配置管理计划有什么区别？",
+      "answer": "变更管理计划规定变更如何提出、分析、审批、实施和跟踪；配置管理计划规定配置项如何识别、建立基线、进行版本控制、记录状态以及开展配置审计。",
+      "category": "变更与配置管理",
+      "card_type": "compare",
+      "source_section": "第11—13章 规划与监控过程组",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "题库高频辨析"
+    },
+    {
+      "id": "rk-xj-029",
+      "question": "固定总价、成本补偿和工料合同的风险分配有什么特点？",
+      "answer": "固定总价合同通常把较多成本风险转给卖方；成本补偿合同由买方承担较多成本风险；工料合同兼具成本补偿和总价合同特征，常用于范围暂不明确、按实际工时和材料计费的工作。",
+      "category": "采购管理",
+      "card_type": "compare",
+      "source_section": "第11—13章 采购管理",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "合同类型高频辨析"
+    },
+    {
+      "id": "rk-xj-030",
+      "question": "在权力—利益方格中，应如何管理“高权力、高利益”的干系人？",
+      "answer": "重点管理并保持密切合作。常见对应关系是：高权力高利益—重点管理；高权力低利益—令其满意；低权力高利益—随时告知；低权力低利益—监督。",
+      "category": "干系人管理",
+      "card_type": "qa",
+      "source_section": "第10—13章 干系人管理",
+      "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
+      "review_status": "已初审",
+      "note": "题库高频模型"
+    }
+  ]
+}

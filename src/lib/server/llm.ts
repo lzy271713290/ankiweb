@@ -106,7 +106,14 @@ function buildCatalog(): ServerModel[] {
 }
 
 export function getPublicModels(): ModelOption[] {
-  return buildCatalog().map(({ apiKey: _apiKey, baseUrl: _baseUrl, demo: _demo, disableThinking: _disableThinking, ...model }) => model);
+  return buildCatalog().map((model) => ({
+    id: model.id,
+    label: model.label,
+    provider: model.provider,
+    model: model.model,
+    configured: model.configured,
+    recommended: model.recommended,
+  }));
 }
 
 export function getConfiguredModel(modelId?: string): ServerModel {
@@ -173,13 +180,52 @@ function demoCardsFromPrompt(prompt: string): string {
   return JSON.stringify(cards);
 }
 
+function demoAnalysisFromPrompt(prompt: string): string {
+  const content = prompt.split('【材料】')[1]?.trim() || '用于验证分析流程的演示材料。';
+  const sentences = content
+    .split(/[。！？!?\n]+/)
+    .map((sentence) => sentence.replace(/^[#\-\d.\s]+/, '').trim())
+    .filter((sentence) => sentence.length >= 6);
+  const points = (sentences.length > 0 ? sentences : [content])
+    .slice(0, 12)
+    .map((sentence, index) => ({
+      title: sentence.slice(0, 28),
+      importance: index < 4 ? 'core' : 'important',
+      knowledge_type:
+        /区别|相比|不同/.test(sentence) ? 'comparison'
+          : /步骤|流程|首先|其次|最后/.test(sentence) ? 'sequence'
+            : /公式|=|计算/.test(sentence) ? 'formula'
+              : index === 0 ? 'definition'
+                : 'fact',
+      suggested_cards: /区别|相比|不同|步骤|流程|公式|计算/.test(sentence) ? 2 : 1,
+    }));
+  const formulas = sentences.filter((sentence) => /公式|=|计算/.test(sentence)).length;
+  const comparisons = sentences.filter((sentence) => /区别|相比|不同/.test(sentence)).length;
+  const processes = sentences.filter((sentence) => /步骤|流程|首先|其次|最后/.test(sentence)).length;
+
+  return JSON.stringify({
+    sections: Math.max(1, content.split(/\n#{1,6}\s|第.+章/).length),
+    knowledge_points: Math.max(3, points.length),
+    core_knowledge_points: Math.max(2, points.filter((point) => point.importance === 'core').length),
+    signals: { formulas, comparisons, processes },
+    reason: '演示模型根据句子、概念关系和复杂知识类型给出建议。',
+    knowledge_point_items: points,
+  });
+}
+
+function demoResponseFromPrompt(prompt: string): string {
+  return prompt.includes('请先分析材料，不要生成卡片')
+    ? demoAnalysisFromPrompt(prompt)
+    : demoCardsFromPrompt(prompt);
+}
+
 export async function* streamChatCompletion(
   model: ServerModel,
   messages: ChatMessage[],
   signal: AbortSignal,
 ): AsyncGenerator<string> {
   if (model.demo) {
-    const content = demoCardsFromPrompt(messages.at(-1)?.content || '');
+    const content = demoResponseFromPrompt(messages.at(-1)?.content || '');
     for (let index = 0; index < content.length; index += 48) {
       yield content.slice(index, index + 48);
     }

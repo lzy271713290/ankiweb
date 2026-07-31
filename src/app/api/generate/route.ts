@@ -1,6 +1,15 @@
 import { NextRequest } from 'next/server';
 import { getConfiguredModel, streamChatCompletion } from '@/lib/server/llm';
-import type { CardType, KnowledgeCard, SSEMessage } from '@/lib/types';
+import type {
+  CardType,
+  ContentAnalysis,
+  GenerationPlan,
+  KnowledgeCard,
+  SSEMessage,
+} from '@/lib/types';
+
+const MAX_GENERATION_CHARS = 20_000;
+const MAX_SINGLE_BATCH_CARDS = 120;
 
 function toCardType(value: unknown): CardType {
   return value === 'cloze' ||
@@ -77,10 +86,12 @@ function buildPrompt(
   coverAll: boolean,
   cardType: string,
   difficulty: number,
+  generationPlan: GenerationPlan,
+  analysis?: ContentAnalysis,
 ): string {
   const diffLabels = ['', '轻松', '较易', '中等', '较难', '困难'];
   const diffLabel = diffLabels[difficulty] || '中等';
-  
+
   let typeInstruction = '';
   if (cardType === 'mixed') {
     typeInstruction = '根据内容自动选择最合适的卡片类型（qa、cloze、def）。';
@@ -107,17 +118,38 @@ function buildPrompt(
     : `请根据以下内容生成 ${cardCount} 张高质量的学习卡片。`;
 
   const difficultyInstruction = `难度倾向：${diffLabel}（1=轻松，5=困难）。`;
+  const planLabels: Record<GenerationPlan, string> = {
+    concise: '精简复习：只保留核心、高频和最值得主动回忆的内容',
+    recommended: '标准推荐：覆盖核心知识点，并保留重要辨析、公式和流程',
+    comprehensive: '全面覆盖：在避免重复的前提下覆盖核心、重要和补充知识点',
+    custom: '自定义数量：优先保证原子性和有效性，不为凑数制造同义重复',
+  };
+  const analyzedKnowledgePoints = analysis?.knowledgePointItems
+    .map((item) => `- [${item.importance}/${item.knowledge_type}] ${item.title}（建议 ${item.suggested_cards} 张）`)
+    .join('\n');
+  const analysisInstruction = analysis
+    ? `【内容分析结果】
+识别到约 ${analysis.knowledgePoints} 个原子知识点，其中 ${analysis.coreKnowledgePoints} 个核心知识点。
+生成方案：${planLabels[generationPlan]}。
+${analyzedKnowledgePoints ? `优先参考的知识点：\n${analyzedKnowledgePoints}` : ''}
+分析结果只用于规划，最终答案必须以待处理原文为依据。`
+    : `【生成方案】
+${planLabels[generationPlan]}。`;
 
   return `你是一个专业的 Anki 记忆卡片生成器。${countInstruction}${difficultyInstruction}
 
-【规则】
+【科学拆卡规则】
 1. ${typeInstruction}
-2. 每张卡片测试一个具体的知识点
-3. 问题要清晰、具体，能检验理解程度
-4. 答案要简洁、准确
-5. 覆盖文本中的所有关键概念
-6. 不要在不同卡片之间重复内容
-7. 根据内容自动判断分类（category）
+2. 一张卡片只测试一个主要事实、定义、关系、公式或步骤；定义、特点、作用、原因和例子不要混在同一张卡里
+3. 问题必须脱离原文仍能独立理解，避免“它、上述、这种情况”等模糊指代
+4. 普通答案优先控制在 40 个汉字以内；超过 80 个汉字时必须拆卡，除非是不可再拆的步骤或对比
+5. 先在内部把原文拆成原子知识点，再生成卡片；不要输出拆分过程或思考过程
+6. 问题不能无意泄露答案，答案不得补充原文没有依据的事实
+7. 不要为达到数量制造同义改写或低价值重复；若有效知识不足，可以少于目标数量
+8. 三项以上列表、易混概念、公式含义与应用可以拆成多张互补卡片
+9. 根据内容自动判断分类（category），并填写能定位原文的 source_section
+
+${analysisInstruction}
 
 【卡片类型说明】
 - cloze（填空题）：在 question 字段中用 {{c1::答案}} 标记需要填空的部分，answer 字段留空
@@ -127,26 +159,43 @@ function buildPrompt(
 - compare（对比卡）：聚焦两个概念的异同点
 - sequence（步骤卡）：用于流程、阶段和有序列表
 
-【示例】
+【优质示例】
 内容："RAG（Retrieval-Augmented Generation）是一种结合检索和生成的 AI 技术架构。"
-生成：{"question": "RAG 的全称是 {{c1::Retrieval-Augmented Generation}}", "answer": "", "card_type": "cloze", "category": "AI概念"}
+生成：{"question": "RAG 的全称是 {{c1::Retrieval-Augmented Generation}}", "answer": "", "card_type": "cloze", "category": "AI概念", "source_section": "RAG定义"}
 
 内容："机器学习的三种主要类型是监督学习、无监督学习和强化学习。"
-生成：{"question": "机器学习的三种主要类型是什么？", "answer": "监督学习、无监督学习和强化学习", "card_type": "qa", "category": "机器学习"}
+生成：{"question": "机器学习的三种主要类型是什么？", "answer": "监督学习、无监督学习和强化学习", "card_type": "qa", "category": "机器学习", "source_section": "机器学习分类"}
 
-内容："间隔重复法（Spaced Repetition）通过在遗忘临界点安排复习，将短期记忆转化为长期记忆。"
-生成：{"question": "什么是间隔重复法（Spaced Repetition）？", "answer": "间隔重复法是一种基于遗忘曲线的学习策略：在即将遗忘的时刻进行复习，可用最少的复习次数达到最长久的记忆保留。", "card_type": "def", "category": "学习方法"}
+内容："范围基准由项目范围说明书、WBS和WBS词典组成。"
+生成：{"question": "范围基准由哪三部分组成？", "answer": "项目范围说明书、WBS和WBS词典。", "card_type": "qa", "category": "范围管理", "source_section": "范围基准"}
+
+内容："风险是尚未发生的不确定事件；问题是已经发生、需要处理的现实情况。"
+生成：{"question": "项目管理中，风险与问题的核心区别是什么？", "answer": "风险尚未发生；问题已经发生。", "card_type": "compare", "category": "风险管理", "source_section": "风险与问题"}
+
+【反例】
+不要生成把定义、特点、作用和例子全部塞进一个答案的长卡；应拆成多张原子卡。
+不要仅替换措辞重复考查同一个事实。
 
 【待处理内容】
-${content.substring(0, 8000)}
+${content.substring(0, MAX_GENERATION_CHARS)}
 
 请返回 JSON 数组，不要包含任何其他文本、注释或 markdown 标记。格式如下：
-[{"question": "...", "answer": "...", "card_type": "cloze/qa/def/reverse/compare/sequence", "category": "..."}]`;
+[{"question": "...", "answer": "...", "card_type": "cloze/qa/def/reverse/compare/sequence", "category": "...", "source_section": "..."}]`;
 }
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { content, cardCount = 15, preferCloze = true, coverAll = false, cardType = 'mixed', difficulty = 3, modelId } = body as {
+  const {
+    content,
+    cardCount = 15,
+    preferCloze = true,
+    coverAll = false,
+    cardType = 'mixed',
+    difficulty = 3,
+    modelId,
+    generationPlan = 'recommended',
+    analysis,
+  } = body as {
     content: string;
     cardCount?: number;
     preferCloze?: boolean;
@@ -154,12 +203,20 @@ export async function POST(request: NextRequest) {
     cardType?: string;
     difficulty?: number;
     modelId?: string;
+    generationPlan?: GenerationPlan;
+    analysis?: ContentAnalysis;
   };
 
   if (!content || content.trim().length < 5) {
     return new Response(
       JSON.stringify({ error: '内容太短，请输入更多文本' }),
       { status: 400, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+  if (!Number.isFinite(cardCount) || cardCount < 1 || cardCount > MAX_SINGLE_BATCH_CARDS) {
+    return Response.json(
+      { error: `单批生成数量需在 1～${MAX_SINGLE_BATCH_CARDS} 张之间` },
+      { status: 400 },
     );
   }
 
@@ -179,7 +236,16 @@ export async function POST(request: NextRequest) {
     },
     {
       role: 'user' as const,
-      content: buildPrompt(content, cardCount, preferCloze, coverAll, cardType, difficulty),
+      content: buildPrompt(
+        content,
+        Math.round(cardCount),
+        preferCloze,
+        coverAll,
+        cardType,
+        difficulty,
+        generationPlan,
+        analysis,
+      ),
     },
   ];
 
@@ -210,7 +276,7 @@ export async function POST(request: NextRequest) {
                 answer: (obj.answer as string) || '',
                 category: (obj.category as string) || '通用',
                 card_type: toCardType(obj.card_type),
-                source_section: (obj.category as string) || '通用',
+                source_section: (obj.source_section as string) || (obj.category as string) || '通用',
               };
               send({ type: 'card', data: card });
               sentCount++;
@@ -228,7 +294,7 @@ export async function POST(request: NextRequest) {
               answer: (obj.answer as string) || '',
               category: (obj.category as string) || '通用',
               card_type: toCardType(obj.card_type),
-              source_section: (obj.category as string) || '通用',
+              source_section: (obj.source_section as string) || (obj.category as string) || '通用',
             };
             send({ type: 'card', data: card });
             sentCount++;

@@ -34,10 +34,11 @@ import { Toaster } from '@/components/ui/sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { useDecks } from '@/hooks/use-decks';
 import {
-  CARD_COUNT_OPTIONS,
   CARD_TYPE_META,
   CARD_TYPE_OPTIONS,
   DIFFICULTY_LEVELS,
+  type ContentAnalysis,
+  type GenerationPlan,
   type KnowledgeCard,
   type ModelOption,
   type PushChannelStatus,
@@ -53,11 +54,25 @@ RAG 系统主要包括文档处理、检索和生成三个模块。相比只依�
 RAG 适合知识频繁变化的场景；微调更适合改变模型的行为模式。实际应用中，两者可以结合使用。`;
 
 type CardTypeOption = (typeof CARD_TYPE_OPTIONS)[number]['value'];
-type CountOption = (typeof CARD_COUNT_OPTIONS)[number]['value'];
 type ActiveView = 'create' | 'decks' | 'push' | 'models';
 type TestResult = { ok: boolean; message: string; latencyMs?: number };
 
-const AUTO_COUNT = 8;
+const PLAN_META: Array<{
+  id: Exclude<GenerationPlan, 'custom'>;
+  label: string;
+  description: string;
+}> = [
+  { id: 'concise', label: '精简复习', description: '核心与高频' },
+  { id: 'recommended', label: '标准推荐', description: '覆盖与负担平衡' },
+  { id: 'comprehensive', label: '全面覆盖', description: '更多细节与应用' },
+];
+
+const PLAN_LABELS: Record<GenerationPlan, string> = {
+  concise: '精简复习',
+  recommended: '标准推荐',
+  comprehensive: '全面覆盖',
+  custom: '自定义',
+};
 
 const NAV_ITEMS: Array<{ id: ActiveView; label: string; icon: typeof Sparkles }> = [
   { id: 'create', label: '生成卡片', icon: Sparkles },
@@ -72,12 +87,31 @@ async function readJson<T>(response: Response, fallbackMessage: string): Promise
   return data;
 }
 
+function buildAnalysisKey(
+  content: string,
+  modelId: string,
+  cardType: CardTypeOption,
+  difficulty: number,
+): string {
+  let hash = 2166136261;
+  const value = `${modelId}\u0000${cardType}\u0000${difficulty}\u0000${content}`;
+  for (let index = 0; index < value.length; index++) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${value.length}-${(hash >>> 0).toString(16)}`;
+}
+
 export default function Home() {
   const [activeView, setActiveView] = useState<ActiveView>('create');
   const [content, setContent] = useState('');
   const [cardType, setCardType] = useState<CardTypeOption>('mixed');
-  const [countChoice, setCountChoice] = useState<CountOption>('6');
   const [difficulty, setDifficulty] = useState(3);
+  const [analysis, setAnalysis] = useState<ContentAnalysis | null>(null);
+  const [analysisKey, setAnalysisKey] = useState('');
+  const [generationPlan, setGenerationPlan] = useState<GenerationPlan>('recommended');
+  const [customCardCount, setCustomCardCount] = useState('10');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [deckName, setDeckName] = useState('');
   const [cards, setCards] = useState<KnowledgeCard[]>([]);
   const [models, setModels] = useState<ModelOption[]>([]);
@@ -105,7 +139,27 @@ export default function Home() {
   );
   const selectedModel = models.find((model) => model.id === selectedModelId);
   const selectedPushDeck = decks.find((deck) => deck.id === selectedPushDeckId);
-  const actualCardCount = countChoice === 'auto' ? AUTO_COUNT : Number.parseInt(countChoice, 10);
+  const currentAnalysisKey = useMemo(
+    () => buildAnalysisKey(content, selectedModelId, cardType, difficulty),
+    [cardType, content, difficulty, selectedModelId],
+  );
+  const analysisIsCurrent = analysis !== null && analysisKey === currentAnalysisKey;
+  const parsedCustomCount = Number.parseInt(customCardCount, 10);
+  const actualCardCount = analysis
+    ? generationPlan === 'custom'
+      ? Math.min(120, Math.max(1, Number.isFinite(parsedCustomCount) ? parsedCustomCount : 1))
+      : analysis.suggestions[generationPlan]
+    : 0;
+  const customWarning = useMemo(() => {
+    if (!analysis || generationPlan !== 'custom' || !Number.isFinite(parsedCustomCount)) return '';
+    if (parsedCustomCount < analysis.suggestions.minimum) {
+      return `低于建议下限 ${analysis.suggestions.minimum} 张，可能遗漏核心知识点。`;
+    }
+    if (parsedCustomCount > analysis.suggestions.maximum) {
+      return `高于建议上限 ${analysis.suggestions.maximum} 张，可能出现重复；系统会优先保证质量。`;
+    }
+    return '';
+  }, [analysis, generationPlan, parsedCustomCount]);
   const cardCounts = useMemo(
     () =>
       cards.reduce<Record<string, number>>((counts, card) => {
@@ -154,6 +208,47 @@ export default function Home() {
     localStorage.setItem('anki-theme', next ? 'dark' : 'light');
   };
 
+  const handleAnalyze = async () => {
+    if (content.trim().length < 5) {
+      toast.error('请输入更多内容（至少 5 个字符）');
+      return;
+    }
+    if (analysisIsCurrent) {
+      toast.info('当前内容已经分析过，可以直接选择方案并生成');
+      return;
+    }
+
+    setIsAnalyzing(true);
+    try {
+      const result = await readJson<ContentAnalysis>(
+        await fetch('/api/analyze-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content,
+            modelId: selectedModelId || undefined,
+            cardType,
+            difficulty,
+          }),
+        }),
+        '内容分析失败',
+      );
+      setAnalysis(result);
+      setAnalysisKey(currentAnalysisKey);
+      setGenerationPlan('recommended');
+      setCustomCardCount(String(result.suggestions.recommended));
+      if (result.mode === 'ai') {
+        toast.success(`识别到约 ${result.knowledgePoints} 个知识点，建议 ${result.suggestions.recommended} 张`);
+      } else {
+        toast.info(`已完成本地估算，建议 ${result.suggestions.recommended} 张`);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '内容分析失败');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const handleGenerate = async () => {
     if (content.trim().length < 5) {
       toast.error('请输入更多内容（至少 5 个字符）');
@@ -162,6 +257,10 @@ export default function Home() {
     if (!selectedModelId) {
       toast.error('请先在模型设置中配置并选择一个模型');
       setActiveView('models');
+      return;
+    }
+    if (!analysisIsCurrent || !analysis) {
+      toast.error('请先分析当前内容并确认生成数量');
       return;
     }
 
@@ -180,6 +279,8 @@ export default function Home() {
           cardType,
           difficulty,
           modelId: selectedModelId,
+          generationPlan,
+          analysis,
         }),
         signal: controller.signal,
       });
@@ -408,7 +509,7 @@ export default function Home() {
             </span>
             <span className="flex items-baseline gap-2">
               <span className="text-[17px] font-bold tracking-tight">AnkiCard AI</span>
-              <span className="font-mono text-[10px] text-muted-foreground">v0.3</span>
+              <span className="font-mono text-[10px] text-muted-foreground">v0.4</span>
             </span>
           </button>
 
@@ -555,6 +656,192 @@ export default function Home() {
                     <span>{content.length} 字</span>
                     <span>支持 txt / md / csv / json / html</span>
                   </div>
+                  <Button
+                    variant="outline"
+                    className="mt-3 h-10 w-full gap-2 border-indigo/25 bg-indigo-soft/35 text-indigo hover:bg-indigo-soft"
+                    disabled={content.trim().length < 5 || isAnalyzing || isGenerating}
+                    onClick={() => void handleAnalyze()}
+                  >
+                    {isAnalyzing
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <Brain className="h-4 w-4" />}
+                    {isAnalyzing
+                      ? '正在识别原子知识点...'
+                      : analysisIsCurrent
+                        ? '重新分析内容'
+                        : '分析内容并推荐数量'}
+                  </Button>
+                  {analysis && !analysisIsCurrent && (
+                    <p className="mt-2 flex items-center gap-1.5 text-xs text-amber">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      内容、模型或生成设置已变化，请重新分析。
+                    </p>
+                  )}
+                </div>
+
+                {(analysis || isAnalyzing) && (
+                  <div className="rounded-xl border border-indigo/15 bg-card p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo">智能拆卡建议</p>
+                        <h2 className="mt-1 text-base font-semibold">
+                          {isAnalyzing ? '正在理解材料结构' : `建议生成 ${analysis?.suggestions.recommended ?? 0} 张`}
+                        </h2>
+                      </div>
+                      {analysis && (
+                        <span className={`rounded-full px-2 py-1 text-[10px] font-medium ${
+                          analysis.mode === 'ai'
+                            ? 'bg-indigo-soft text-indigo'
+                            : 'bg-amber-soft text-amber'
+                        }`}>
+                          {analysis.mode === 'ai' ? 'AI 分析' : '本地估算'}
+                        </span>
+                      )}
+                    </div>
+
+                    {isAnalyzing && (
+                      <div className="mt-4 space-y-2">
+                        <div className="h-3 w-full animate-pulse rounded bg-muted" />
+                        <div className="h-3 w-4/5 animate-pulse rounded bg-muted" />
+                        <div className="h-16 w-full animate-pulse rounded-lg bg-muted" />
+                      </div>
+                    )}
+
+                    {analysis && !isAnalyzing && (
+                      <>
+                        <div className="mt-4 grid grid-cols-4 gap-2">
+                          {[
+                            ['有效字符', analysis.characters],
+                            ['章节', analysis.sections],
+                            ['知识点', analysis.knowledgePoints],
+                            ['核心', analysis.coreKnowledgePoints],
+                          ].map(([label, value]) => (
+                            <div key={String(label)} className="rounded-lg bg-muted/60 px-2 py-2.5 text-center">
+                              <div className="text-lg font-bold text-foreground">{value}</div>
+                              <div className="mt-0.5 text-[10px] text-muted-foreground">{label}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{analysis.reason}</p>
+                        {analysis.warning && (
+                          <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-soft/70 px-3 py-2 text-xs leading-relaxed text-amber">
+                            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            {analysis.warning}
+                          </p>
+                        )}
+
+                        {analysis.knowledgePointItems.length > 0 && (
+                          <div className="mt-3">
+                            <div className="mb-2 flex items-center justify-between text-[11px] text-muted-foreground">
+                              <span>优先识别的知识点</span>
+                              <span>展示前 {Math.min(8, analysis.knowledgePointItems.length)} 项</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {analysis.knowledgePointItems.slice(0, 8).map((item) => (
+                                <span
+                                  key={item.id}
+                                  className={`rounded-full border px-2 py-1 text-[11px] ${
+                                    item.importance === 'core'
+                                      ? 'border-indigo/20 bg-indigo-soft text-indigo'
+                                      : 'border-border bg-background text-muted-foreground'
+                                  }`}
+                                >
+                                  {item.title}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {PLAN_META.map((plan) => {
+                            const count = analysis.suggestions[plan.id];
+                            return (
+                              <button
+                                key={plan.id}
+                                type="button"
+                                onClick={() => setGenerationPlan(plan.id)}
+                                className={`rounded-lg border px-2 py-3 text-left transition ${
+                                  generationPlan === plan.id
+                                    ? 'border-indigo bg-indigo-soft/70 ring-2 ring-indigo/10'
+                                    : 'border-border bg-background hover:border-indigo/30'
+                                }`}
+                              >
+                                <span className="block text-xs font-semibold">{plan.label}</span>
+                                <span className="mt-1 block text-lg font-bold text-indigo">{count}张</span>
+                                <span className="mt-0.5 block text-[10px] leading-tight text-muted-foreground">{plan.description}</span>
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            onClick={() => setGenerationPlan('custom')}
+                            className={`rounded-lg border px-2 py-3 text-left transition ${
+                              generationPlan === 'custom'
+                                ? 'border-indigo bg-indigo-soft/70 ring-2 ring-indigo/10'
+                                : 'border-border bg-background hover:border-indigo/30'
+                            }`}
+                          >
+                            <span className="block text-xs font-semibold">自定义</span>
+                            <span className="mt-1 block text-lg font-bold text-indigo">
+                              {generationPlan === 'custom' ? `${actualCardCount}张` : '自己定'}
+                            </span>
+                            <span className="mt-0.5 block text-[10px] leading-tight text-muted-foreground">单批最多120张</span>
+                          </button>
+                        </div>
+
+                        {generationPlan === 'custom' && (
+                          <div className="mt-3 rounded-lg border border-border bg-background p-3">
+                            <div className="flex items-center gap-3">
+                              <label htmlFor="custom-card-count" className="shrink-0 text-xs font-medium">自定义数量</label>
+                              <Input
+                                id="custom-card-count"
+                                type="number"
+                                min={1}
+                                max={120}
+                                value={customCardCount}
+                                onChange={(event) => setCustomCardCount(event.target.value)}
+                                className="h-8 w-24"
+                              />
+                              <span className="text-[11px] text-muted-foreground">
+                                建议范围 {analysis.suggestions.minimum}～{analysis.suggestions.maximum} 张
+                              </span>
+                            </div>
+                            {customWarning && (
+                              <p className="mt-2 flex items-center gap-1.5 text-xs text-amber">
+                                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                                {customWarning}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo">科学拆卡原则</p>
+                      <h2 className="mt-1 text-sm font-semibold">不是越多越好，而是越容易主动回忆越好</h2>
+                    </div>
+                    <CheckCircle2 className="h-5 w-5 shrink-0 text-indigo" />
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    {[
+                      ['一卡一知识点', '降低单次回忆负担'],
+                      ['问题能独立理解', '避免“上述、它、这个”'],
+                      ['答案保持最小信息', '过长内容自动拆分'],
+                      ['忠于用户原文', '不补写没有依据的事实'],
+                    ].map(([title, description]) => (
+                      <div key={title} className="rounded-lg bg-muted/60 px-3 py-2.5">
+                        <div className="text-xs font-semibold">{title}</div>
+                        <div className="mt-1 text-[10px] leading-relaxed text-muted-foreground">{description}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="space-y-4 rounded-xl border border-border bg-card p-4 shadow-sm">
@@ -576,12 +863,11 @@ export default function Home() {
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
                       <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">生成数量</label>
-                      <div className="flex flex-wrap gap-2">
-                        {CARD_COUNT_OPTIONS.map((option) => (
-                          <button key={option.value} onClick={() => setCountChoice(option.value)} className={`chip ${countChoice === option.value ? 'active' : ''}`}>
-                            {option.label}
-                          </button>
-                        ))}
+                      <div className="flex h-9 items-center justify-between rounded-md border border-input bg-background px-3">
+                        <span className="text-sm">{analysisIsCurrent ? PLAN_LABELS[generationPlan] : '等待内容分析'}</span>
+                        <span className="font-mono text-sm font-semibold text-indigo">
+                          {analysisIsCurrent ? `${actualCardCount} 张` : '—'}
+                        </span>
                       </div>
                     </div>
                     <div>
@@ -623,8 +909,13 @@ export default function Home() {
                   {isGenerating ? (
                     <Button variant="destructive" className="h-11" onClick={() => abortRef.current?.abort()}>停止生成</Button>
                   ) : (
-                    <Button className="btn-primary-gradient h-11 gap-2" onClick={() => void handleGenerate()} disabled={content.trim().length < 5 || !selectedModelId}>
-                      <Sparkles className="h-4 w-4" /> 生成卡片
+                    <Button
+                      className="btn-primary-gradient h-11 gap-2"
+                      onClick={() => void handleGenerate()}
+                      disabled={content.trim().length < 5 || !selectedModelId || !analysisIsCurrent || actualCardCount < 1}
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      {analysisIsCurrent ? `生成 ${actualCardCount} 张卡片` : '请先分析内容'}
                     </Button>
                   )}
                 </div>

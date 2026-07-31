@@ -21,16 +21,52 @@ export const CARD_TYPE_META: Record<CardType, { label: string; shortLabel: strin
   sequence: { label: '步骤卡', shortLabel: '步骤' },
 };
 
-/** 生成数量选项 */
-export const CARD_COUNT_OPTIONS = [
-  { value: '3', label: '3 张' },
-  { value: '6', label: '6 张' },
-  { value: '10', label: '10 张' },
-  { value: 'auto', label: 'AI 自动' },
-] as const;
-
 /** 难度等级 */
 export const DIFFICULTY_LEVELS = ['', '轻松', '较易', '中等', '较难', '困难'] as const;
+
+export type GenerationPlan = 'concise' | 'recommended' | 'comprehensive' | 'custom';
+export type KnowledgeImportance = 'core' | 'important' | 'supplementary';
+export type KnowledgeKind =
+  | 'fact'
+  | 'definition'
+  | 'comparison'
+  | 'sequence'
+  | 'formula'
+  | 'application';
+
+export interface AnalyzedKnowledgePoint {
+  id: string;
+  title: string;
+  importance: KnowledgeImportance;
+  knowledge_type: KnowledgeKind;
+  suggested_cards: number;
+}
+
+export interface CardCountSuggestions {
+  concise: number;
+  recommended: number;
+  comprehensive: number;
+  minimum: number;
+  maximum: number;
+}
+
+export interface ContentAnalysis {
+  mode: 'ai' | 'fallback';
+  characters: number;
+  sections: number;
+  knowledgePoints: number;
+  coreKnowledgePoints: number;
+  signals: {
+    formulas: number;
+    comparisons: number;
+    processes: number;
+  };
+  suggestions: CardCountSuggestions;
+  reason: string;
+  knowledgePointItems: AnalyzedKnowledgePoint[];
+  truncated: boolean;
+  warning?: string;
+}
 
 /** 知识卡片数据结构 */
 export interface KnowledgeCard {
@@ -52,6 +88,8 @@ export interface GenerateRequest {
   cardType?: (typeof CARD_TYPE_OPTIONS)[number]['value'];
   difficulty?: number;
   modelId?: string;
+  generationPlan?: GenerationPlan;
+  analysis?: ContentAnalysis;
 }
 
 export interface SavedDeck {
