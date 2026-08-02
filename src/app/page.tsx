@@ -1309,7 +1309,7 @@ export default function Home() {
                 </table>
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
-                本地明细文件：<code className="rounded bg-muted px-1.5 py-0.5">{usage?.storage || 'data/llm-usage.jsonl'}</code>。该文件已被 Git 忽略。
+                用量账本：<code className="rounded bg-muted px-1.5 py-0.5">{usage?.storage || 'data/llm-usage.sqlite'}</code>。当前通过 Git 在两台电脑间同步，换电脑前请先推送、开工前先拉取。
                 {usage && usage.summary.promptCacheHitTokens > 0 ? ` 缓存命中 ${usage.summary.promptCacheHitTokens.toLocaleString('zh-CN')} Token。` : ''}
               </p>
             </section>

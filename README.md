@@ -61,7 +61,7 @@ CUSTOM_LLM_MODELS=model-a|模型 A,model-b|模型 B
 
 本地管理员可打开 <http://localhost:5000/admin/usage>，查看今日、历史总计、每日汇总、按模型汇总和每次请求明细。默认按 `Asia/Shanghai` 划分自然日，可通过 `USAGE_TIME_ZONE` 修改统计时区。
 
-明细保存在本机 `data/llm-usage.jsonl`，并通过只读接口 `GET /api/usage` 汇总展示。该文件已被 Git 忽略，不记录 API Key、Webhook 或用户材料原文。
+明细保存在 `data/llm-usage.sqlite`，并通过只读接口 `GET /api/usage` 汇总展示。当前将 SQLite 文件提交到 Git，用于公司与家里电脑顺序同步；换电脑前必须先提交推送，另一台开工前必须先拉取。它不记录 API Key、Webhook 或用户材料原文。SQLite 不适合两台电脑同时写入，后续应迁移到远程数据库。
 
 ### 卡组与推送
 

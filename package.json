@@ -10,6 +10,7 @@
     "lint:build": "eslint . --quiet",
     "start": "next start -p 5000",
     "ts-check": "tsc -p tsconfig.json",
+    "usage:migrate": "tsx scripts/migrate-usage-to-sqlite.ts",
     "validate": "pnpm run ts-check && pnpm run lint:build"
   },
   "dependencies": {

@@ -234,7 +234,7 @@ export default function UsageAdminPage() {
         </section>
 
         <footer className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed p-4 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5"><Database className="h-3.5 w-3.5" />本地账本：{payload?.storage || 'data/llm-usage.jsonl'}</span>
+          <span className="inline-flex items-center gap-1.5"><Database className="h-3.5 w-3.5" />SQLite 账本：{payload?.storage || 'data/llm-usage.sqlite'}</span>
           <span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" />刷新页面即可获取最新记录</span>
         </footer>
       </div>

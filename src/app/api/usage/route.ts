@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     byOperation: groupUsage(allRecords, (record) => record.operation)
       .sort((left, right) => right.totalTokens - left.totalTokens),
     records,
-    storage: 'data/llm-usage.jsonl',
+    storage: 'data/llm-usage.sqlite',
     timeZone: USAGE_TIME_ZONE,
   });
 }
