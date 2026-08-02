@@ -42,8 +42,13 @@ async function main(): Promise<void> {
   const apkg = await exportApkg(source.cards, source.deckName);
   await writeFile(path.join(outputDir, `${source.deckName}.apkg`), apkg);
 
+  const previewDeckName = '2026软考中级·系统集成项目管理工程师·免费试看10卡';
+  const previewApkg = await exportApkg(source.cards.slice(0, 10), previewDeckName);
+  await writeFile(path.join(outputDir, `${previewDeckName}.apkg`), previewApkg);
+
   const headers = [
     'ID',
+    '卡组版本',
     '模块',
     '卡片类型',
     '问题',
@@ -55,6 +60,7 @@ async function main(): Promise<void> {
   ];
   const rows = source.cards.map((card) => [
     card.id,
+    source.version,
     card.category,
     card.card_type,
     card.question,

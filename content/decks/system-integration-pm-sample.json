@@ -1,18 +1,25 @@
 {
-  "deckName": "2026软考中级·系统集成项目管理工程师·高频考点样卡",
-  "version": "0.1.0",
-  "scope": "第3版教程知识框架 + 2023年审定考试大纲 + 公开题库高频考点核对",
+  "deckName": "2026软考中级·系统集成项目管理工程师·项目管理核心45卡",
+  "version": "1.0.0",
+  "releaseStatus": "首发候选版",
+  "releaseDate": "2026-08-01",
+  "scope": "第3版教程第9—14章项目管理核心 + 2023年审定考试大纲 + 公开题库高频方向核对",
+  "reviewSummary": "45张卡已完成结构、原子性、答案长度、模糊指代、来源章节和事实一致性复核；正式售卖前仍建议由持有正版第3版教程的人工复核者逐页核对。",
   "sources": [
     {
-      "name": "系统集成项目管理工程师考试大纲",
-      "url": "https://www.tup.tsinghua.edu.cn/upload/books/yz/070139-01.pdf"
+      "name": "清华大学出版社：第3版教程与2023年审定考试大纲信息",
+      "url": "https://www.tup.tsinghua.edu.cn/booksCenter/book_10979801.html"
     },
     {
-      "name": "系统集成项目管理工程师教程（第3版）内容框架",
-      "url": "https://www.cnitpm.com/jcbook.html"
+      "name": "清华大学出版社：第3版教程前言与章节框架",
+      "url": "https://www.tup.tsinghua.edu.cn/booksCenter/bookpreface?id=10316401"
     },
     {
-      "name": "系统集成项目管理工程师公开题库考点索引",
+      "name": "2023年审定考试大纲目录（公开转录，仅作范围索引）",
+      "url": "https://www.cnitpm.com/pm1/154974osytftq4gg.html"
+    },
+    {
+      "name": "公开题库考点索引（仅用于判断高频方向）",
       "url": "https://ruankaotiku.net/subjects/system-integration-pm/"
     }
   ],
@@ -20,7 +27,7 @@
     {
       "id": "rk-xj-001",
       "question": "项目的基本定义是什么？",
-      "answer": "项目是为创造独特的产品、服务或成果而进行的临时性工作。“临时性”表示有明确的开始和结束，“独特性”表示交付成果具有区别于日常运营的特征。",
+      "answer": "项目是为创造独特的产品、服务或成果而进行的临时性工作。",
       "category": "项目管理概论",
       "card_type": "def",
       "source_section": "第9章 项目管理概论",
@@ -53,7 +60,7 @@
     {
       "id": "rk-xj-004",
       "question": "项目章程的核心作用是什么？",
-      "answer": "正式批准项目成立，并授权项目经理在项目活动中使用组织资源。项目章程通常还记录项目目的、高层级需求、主要风险、总体里程碑和关键干系人等高层信息。",
+      "answer": "正式批准项目成立，并授权项目经理在项目活动中使用组织资源。",
       "category": "启动过程组",
       "card_type": "qa",
       "source_section": "第10章 启动过程组",
@@ -75,7 +82,7 @@
     {
       "id": "rk-xj-006",
       "question": "项目管理计划与项目文件有什么区别？",
-      "answer": "项目管理计划说明项目将如何执行、监督和收尾，包含各子管理计划和基准；项目文件用于记录和支持具体管理活动，例如需求文件、风险登记册、问题日志和经验教训登记册。二者在变更后的更新路径不同。",
+      "answer": "项目管理计划规定项目如何执行、监督和收尾；项目文件记录和支持具体管理活动。",
       "category": "规划过程组",
       "card_type": "compare",
       "source_section": "第11章 规划过程组",
@@ -97,7 +104,7 @@
     {
       "id": "rk-xj-008",
       "question": "需求文件与需求跟踪矩阵有什么区别？",
-      "answer": "需求文件记录业务需求、干系人需求、解决方案需求等具体内容；需求跟踪矩阵把每项需求与其来源、设计、开发、测试、验收及变更状态建立关联，用于双向跟踪和防止遗漏。",
+      "answer": "需求文件描述具体需求；需求跟踪矩阵把需求与来源、实现、测试、验收及状态关联起来。",
       "category": "范围管理",
       "card_type": "compare",
       "source_section": "第11章 规划过程组·范围管理",
@@ -119,7 +126,7 @@
     {
       "id": "rk-xj-010",
       "question": "WBS的“100%规则”是什么意思？",
-      "answer": "WBS必须包含完成项目目标所需的全部工作，包括项目管理工作；下层要素之和应完整代表其上层要素的全部范围，既不能遗漏，也不应加入项目范围之外的工作。",
+      "answer": "WBS应包含完成项目目标所需的全部工作；下层要素之和应完整代表上层要素的范围。",
       "category": "范围管理",
       "card_type": "def",
       "source_section": "第11章 规划过程组·范围管理",
@@ -185,7 +192,7 @@
     {
       "id": "rk-xj-016",
       "question": "提前量与滞后量有什么区别？",
-      "answer": "提前量允许紧后活动相对于紧前活动提前开始；滞后量要求紧后活动相对于紧前活动延后一定时间。例如“测试准备在开发完成前1天开始”是提前量，“安装后稳定运行2天再压测”是滞后量。",
+      "answer": "提前量允许紧后活动提前开始；滞后量要求紧后活动延后一定时间。前者为负等待，后者为正等待。",
       "category": "进度管理",
       "card_type": "compare",
       "source_section": "第11章 规划过程组·进度管理",
@@ -346,6 +353,171 @@
       "source_url": "https://ruankaotiku.net/subjects/system-integration-pm/",
       "review_status": "已初审",
       "note": "题库高频模型"
+    },
+    {
+      "id": "rk-xj-031",
+      "question": "项目生命周期与项目管理过程组有什么区别？",
+      "answer": "生命周期描述项目从开始到结束所经历的阶段；过程组按管理目的组织活动，并可在各阶段重复开展。",
+      "category": "项目管理概论",
+      "card_type": "compare",
+      "source_section": "第9章 项目管理概论·生命周期与过程组",
+      "source_url": "https://www.cnitpm.com/pm1/154974osytftq4gg.html",
+      "review_status": "内容复核通过",
+      "note": "新增；易混概念；原创表述"
+    },
+    {
+      "id": "rk-xj-032",
+      "question": "项目、项目集和项目组合的管理重点分别是什么？",
+      "answer": "项目重在实现特定目标；项目集重在协调关联项目获取整体收益；项目组合重在选择和组合工作以实现战略目标。",
+      "category": "项目管理概论",
+      "card_type": "compare",
+      "source_section": "第9章 项目管理概论·项目、项目集与项目组合",
+      "source_url": "https://www.cnitpm.com/pm1/154974osytftq4gg.html",
+      "review_status": "内容复核通过",
+      "note": "新增；大纲题型示例涉及项目组合；原创表述"
+    },
+    {
+      "id": "rk-xj-033",
+      "question": "识别干系人的主要输出是什么？",
+      "answer": "干系人登记册。它记录干系人的身份、相关信息、影响和初步分类。",
+      "category": "启动过程组",
+      "card_type": "qa",
+      "source_section": "第10章 启动过程组·识别干系人",
+      "source_url": "https://www.cnitpm.com/pm1/154974osytftq4gg.html",
+      "review_status": "内容复核通过",
+      "note": "新增；过程输出；原创表述"
+    },
+    {
+      "id": "rk-xj-034",
+      "question": "滚动式规划是什么？",
+      "answer": "一种渐进明细的规划方式：近期工作详细规划，远期工作先保留在较高层级，随后逐步细化。",
+      "category": "规划过程组",
+      "card_type": "def",
+      "source_section": "第11章 规划过程组·定义活动",
+      "source_url": "https://www.cnitpm.com/pm1/154974osytftq4gg.html",
+      "review_status": "内容复核通过",
+      "note": "新增；规划工具；原创表述"
+    },
+    {
+      "id": "rk-xj-035",
+      "question": "类比估算与参数估算有什么区别？",
+      "answer": "类比估算参考相似历史项目；参数估算用历史数据与变量之间的统计关系进行计算。",
+      "category": "进度与成本管理",
+      "card_type": "compare",
+      "source_section": "第11章 规划过程组·估算持续时间与成本",
+      "source_url": "https://www.cnitpm.com/pm1/154974osytftq4gg.html",
+      "review_status": "内容复核通过",
+      "note": "新增；估算方法辨析；原创表述"
+    },
+    {
+      "id": "rk-xj-036",
+      "question": "三点估算中，三角分布的期望持续时间如何计算？",
+      "answer": "tE = (tO + tM + tP) ÷ 3，其中tO、tM、tP分别为乐观、最可能和悲观估算。",
+      "category": "进度管理",
+      "card_type": "qa",
+      "source_section": "第11章 规划过程组·估算活动持续时间",
+      "source_url": "https://www.cnitpm.com/pm1/154974osytftq4gg.html",
+      "review_status": "内容复核通过",
+      "note": "新增；计算基础；原创表述"
+    },
+    {
+      "id": "rk-xj-037",
+      "question": "质量管理中的预防与检查有什么区别？",
+      "answer": "预防是避免错误进入过程；检查是发现结果中已经存在的错误。",
+      "category": "质量管理",
+      "card_type": "compare",
+      "source_section": "第11—13章 质量管理",
+      "source_url": "https://www.cnitpm.com/pm1/154974osytftq4gg.html",
+      "review_status": "内容复核通过",
+      "note": "新增；质量成本辨析；原创表述"
+    },
+    {
+      "id": "rk-xj-038",
+      "question": "管理质量与控制质量的关注点有什么区别？",
+      "answer": "管理质量关注把质量政策转化为过程和改进活动；控制质量关注检查结果是否满足质量要求。",
+      "category": "质量管理",
+      "card_type": "compare",
+      "source_section": "第12—13章 执行与监控过程组·质量管理",
+      "source_url": "https://www.cnitpm.com/pm1/154974osytftq4gg.html",
+      "review_status": "内容复核通过",
+      "note": "新增；过程辨析；原创表述"
+    },
+    {
+      "id": "rk-xj-039",
+      "question": "责任分配矩阵（RAM）的作用是什么？",
+      "answer": "把工作包或活动与负责执行的团队成员关联起来，明确责任分工。",
+      "category": "资源管理",
+      "card_type": "qa",
+      "source_section": "第11章 规划过程组·规划资源管理",
+      "source_url": "https://www.cnitpm.com/pm1/154974osytftq4gg.html",
+      "review_status": "内容复核通过",
+      "note": "新增；资源规划工具；原创表述"
+    },
+    {
+      "id": "rk-xj-040",
+      "question": "有n个沟通渠道时，潜在沟通路径数量如何计算？",
+      "answer": "n × (n - 1) ÷ 2。",
+      "category": "沟通管理",
+      "card_type": "qa",
+      "source_section": "第11章 规划过程组·规划沟通管理",
+      "source_url": "https://www.cnitpm.com/pm1/154974osytftq4gg.html",
+      "review_status": "内容复核通过",
+      "note": "新增；计算基础；原创表述"
+    },
+    {
+      "id": "rk-xj-041",
+      "question": "推式沟通与拉式沟通有什么区别？",
+      "answer": "推式沟通把信息直接发送给接收者，但不保证理解；拉式沟通由接收者自行访问大型信息库。",
+      "category": "沟通管理",
+      "card_type": "compare",
+      "source_section": "第11—13章 沟通管理",
+      "source_url": "https://www.cnitpm.com/pm1/154974osytftq4gg.html",
+      "review_status": "内容复核通过",
+      "note": "新增；沟通方法辨析；原创表述"
+    },
+    {
+      "id": "rk-xj-042",
+      "question": "问题日志与经验教训登记册分别记录什么？",
+      "answer": "问题日志跟踪已发生且需处理的问题；经验教训登记册记录可供当前和未来工作复用的知识。",
+      "category": "执行过程组",
+      "card_type": "compare",
+      "source_section": "第12章 执行过程组·指导工作与管理知识",
+      "source_url": "https://www.cnitpm.com/pm1/154974osytftq4gg.html",
+      "review_status": "内容复核通过",
+      "note": "新增；项目文件辨析；原创表述"
+    },
+    {
+      "id": "rk-xj-043",
+      "question": "工作绩效数据、工作绩效信息和工作绩效报告有什么区别？",
+      "answer": "数据是执行中采集的原始观测值；信息是分析后的关联结果；报告是面向决策者组织和呈现的信息。",
+      "category": "监控过程组",
+      "card_type": "compare",
+      "source_section": "第12—13章 执行与监控过程组",
+      "source_url": "https://www.cnitpm.com/pm1/154974osytftq4gg.html",
+      "review_status": "内容复核通过",
+      "note": "新增；高频三项辨析；原创表述"
+    },
+    {
+      "id": "rk-xj-044",
+      "question": "项目正式收尾通常包括哪些核心工作？",
+      "answer": "验收成果、完成移交、关闭合同与行政事项、归档资料、总结经验并释放资源。",
+      "category": "收尾过程组",
+      "card_type": "sequence",
+      "source_section": "第14章 收尾过程组·结束项目或阶段",
+      "source_url": "https://www.cnitpm.com/pm1/154974osytftq4gg.html",
+      "review_status": "内容复核通过",
+      "note": "新增；收尾框架；原创表述"
+    },
+    {
+      "id": "rk-xj-045",
+      "question": "未实现全部目标的项目还需要正式收尾吗？",
+      "answer": "需要。提前终止或未完全成功的项目仍应确认状态、移交或处置成果、归档并总结经验。",
+      "category": "收尾过程组",
+      "card_type": "qa",
+      "source_section": "第14章 收尾过程组·结束项目或阶段",
+      "source_url": "https://www.cnitpm.com/pm1/154974osytftq4gg.html",
+      "review_status": "内容复核通过",
+      "note": "新增；收尾原则；原创表述"
     }
   ]
 }

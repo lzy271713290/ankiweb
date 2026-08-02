@@ -86,6 +86,7 @@ export interface GenerateRequest {
   preferCloze?: boolean;
   coverAll?: boolean;
   cardType?: (typeof CARD_TYPE_OPTIONS)[number]['value'];
+  cardTypes?: CardType[];
   difficulty?: number;
   modelId?: string;
   generationPlan?: GenerationPlan;
@@ -107,6 +108,56 @@ export interface ModelOption {
   model: string;
   configured: boolean;
   recommended?: boolean;
+}
+
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  promptCacheHitTokens?: number;
+  promptCacheMissTokens?: number;
+  reasoningTokens?: number;
+}
+
+export interface UsageRecord {
+  id: string;
+  timestamp: string;
+  operation: 'analyze' | 'generate' | 'model_test';
+  status: 'success' | 'error' | 'cancelled';
+  provider: string;
+  modelId: string;
+  model: string;
+  modelLabel: string;
+  latencyMs: number;
+  usage?: TokenUsage;
+  metadata?: Record<string, string | number | boolean>;
+  error?: string;
+}
+
+export interface UsageSummary {
+  requestCount: number;
+  successCount: number;
+  errorCount: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  promptCacheHitTokens: number;
+  promptCacheMissTokens: number;
+  reasoningTokens: number;
+}
+
+export interface UsageBreakdown extends UsageSummary {
+  key: string;
+}
+
+export interface UsagePayload {
+  summary: UsageSummary;
+  daily: UsageBreakdown[];
+  byModel: UsageBreakdown[];
+  byOperation: UsageBreakdown[];
+  records: UsageRecord[];
+  storage: string;
+  timeZone: string;
 }
 
 export interface PushChannelStatus {
@@ -133,5 +184,5 @@ export interface CardStats {
 export type SSEMessage =
   | { type: 'card'; data: KnowledgeCard }
   | { type: 'progress'; data: { current: number; total: number } }
-  | { type: 'done'; data: { total: number } }
+  | { type: 'done'; data: { total: number; requested?: number; complete?: boolean } }
   | { type: 'error'; data: { message: string } };

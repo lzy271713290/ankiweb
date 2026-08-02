@@ -26,6 +26,7 @@ storybook-static
 # Package manager artifacts
 .pnp*
 .npm
+.pnpm-store
 
 # Python tooling
 .pytest_cache/
@@ -51,6 +52,7 @@ output.log
 *.log
 *.log.*
 logs/
+data/llm-usage.jsonl
 
 # 视频文件
 *.mp4

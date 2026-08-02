@@ -1,4 +1,10 @@
 import type { ModelOption } from '@/lib/types';
+import {
+  appendUsageRecord,
+  type TokenUsage,
+  type UsageOperation,
+  type UsageStatus,
+} from '@/lib/server/usage';
 
 export interface ChatMessage {
   role: 'system' | 'user';
@@ -17,6 +23,16 @@ interface ChatCompletionChunk {
   error?: {
     message?: string;
   };
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    prompt_cache_hit_tokens?: number;
+    prompt_cache_miss_tokens?: number;
+    completion_tokens_details?: {
+      reasoning_tokens?: number;
+    };
+  } | null;
 }
 
 interface ServerModel extends ModelOption {
@@ -24,6 +40,46 @@ interface ServerModel extends ModelOption {
   baseUrl?: string;
   demo?: boolean;
   disableThinking?: boolean;
+}
+
+interface CompletionTracking {
+  operation: UsageOperation;
+  metadata?: Record<string, string | number | boolean>;
+}
+
+function toTokenUsage(usage: NonNullable<ChatCompletionChunk['usage']>): TokenUsage {
+  return {
+    promptTokens: usage.prompt_tokens ?? 0,
+    completionTokens: usage.completion_tokens ?? 0,
+    totalTokens: usage.total_tokens ?? 0,
+    promptCacheHitTokens: usage.prompt_cache_hit_tokens,
+    promptCacheMissTokens: usage.prompt_cache_miss_tokens,
+    reasoningTokens: usage.completion_tokens_details?.reasoning_tokens,
+  };
+}
+
+async function recordCompletionUsage(
+  model: ServerModel,
+  tracking: CompletionTracking,
+  startedAt: number,
+  status: UsageStatus,
+  usage?: TokenUsage,
+  error?: unknown,
+): Promise<void> {
+  await appendUsageRecord({
+    id: crypto.randomUUID(),
+    timestamp: new Date().toISOString(),
+    operation: tracking.operation,
+    status,
+    provider: model.provider,
+    modelId: model.id,
+    model: model.model,
+    modelLabel: model.label,
+    latencyMs: Math.round(performance.now() - startedAt),
+    usage,
+    metadata: tracking.metadata,
+    error: error instanceof Error ? error.message : error ? String(error) : undefined,
+  });
 }
 
 function parseCustomModels(): Array<{ model: string; label: string }> {
@@ -223,7 +279,14 @@ export async function* streamChatCompletion(
   model: ServerModel,
   messages: ChatMessage[],
   signal: AbortSignal,
+  tracking: CompletionTracking,
 ): AsyncGenerator<string> {
+  const startedAt = performance.now();
+  let usage: TokenUsage | undefined;
+  let status: UsageStatus = 'success';
+  let caughtError: unknown;
+
+  try {
   if (model.demo) {
     const content = demoResponseFromPrompt(messages.at(-1)?.content || '');
     for (let index = 0; index < content.length; index += 48) {
@@ -237,6 +300,7 @@ export async function* streamChatCompletion(
     messages,
     model: model.model,
     stream: true,
+    stream_options: { include_usage: true },
     temperature: 0.7,
   };
   if (model.disableThinking) body.thinking = { type: 'disabled' };
@@ -275,17 +339,29 @@ export async function* streamChatCompletion(
 
       const chunk = JSON.parse(payload) as ChatCompletionChunk;
       if (chunk.error?.message) throw new Error(chunk.error.message);
+      if (chunk.usage) usage = toTokenUsage(chunk.usage);
       const content = chunk.choices?.[0]?.delta?.content;
       if (content) yield content;
     }
     if (done) break;
+  }
+  } catch (error) {
+    status = signal.aborted ? 'cancelled' : 'error';
+    caughtError = error;
+    throw error;
+  } finally {
+    await recordCompletionUsage(model, tracking, startedAt, status, usage, caughtError);
   }
 }
 
 export async function testModelConnection(modelId: string): Promise<{ message: string; latencyMs: number }> {
   const model = getConfiguredModel(modelId);
   const startedAt = performance.now();
-  if (model.demo) return { message: '演示模型工作正常', latencyMs: Math.round(performance.now() - startedAt) };
+  if (model.demo) {
+    const result = { message: '演示模型工作正常', latencyMs: Math.round(performance.now() - startedAt) };
+    await recordCompletionUsage(model, { operation: 'model_test' }, startedAt, 'success');
+    return result;
+  }
   if (!model.apiKey || !model.baseUrl) throw new Error('模型配置不完整');
 
   const body: Record<string, unknown> = {
@@ -297,21 +373,33 @@ export async function testModelConnection(modelId: string): Promise<{ message: s
   };
   if (model.disableThinking) body.thinking = { type: 'disabled' };
 
-  const response = await fetch(completionEndpoint(model.baseUrl), {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${model.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-    cache: 'no-store',
-    signal: AbortSignal.timeout(20_000),
-  });
-  const payload = (await response.json().catch(() => null)) as ChatCompletionChunk | null;
-  if (!response.ok) {
-    throw new Error(payload?.error?.message || `模型连接失败（${response.status}）`);
+  try {
+    const response = await fetch(completionEndpoint(model.baseUrl), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${model.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(20_000),
+    });
+    const payload = (await response.json().catch(() => null)) as ChatCompletionChunk | null;
+    if (!response.ok) {
+      throw new Error(payload?.error?.message || `模型连接失败（${response.status}）`);
+    }
+    const message = payload?.choices?.[0]?.message?.content?.trim();
+    if (!message) throw new Error('模型已响应，但没有返回文本内容');
+    await recordCompletionUsage(
+      model,
+      { operation: 'model_test' },
+      startedAt,
+      'success',
+      payload?.usage ? toTokenUsage(payload.usage) : undefined,
+    );
+    return { message, latencyMs: Math.round(performance.now() - startedAt) };
+  } catch (error) {
+    await recordCompletionUsage(model, { operation: 'model_test' }, startedAt, 'error', undefined, error);
+    throw error;
   }
-  const message = payload?.choices?.[0]?.message?.content?.trim();
-  if (!message) throw new Error('模型已响应，但没有返回文本内容');
-  return { message, latencyMs: Math.round(performance.now() - startedAt) };
 }

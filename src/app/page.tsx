@@ -1,8 +1,11 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import {
   AlertCircle,
+  ChevronDown,
+  ChevronUp,
   Bot,
   Brain,
   CheckCircle2,
@@ -17,9 +20,11 @@ import {
   Moon,
   PencilLine,
   Plus,
+  RefreshCw,
   Save,
   Send,
   Settings2,
+  ShieldCheck,
   Sparkles,
   Sun,
   Trash2,
@@ -38,11 +43,13 @@ import {
   CARD_TYPE_OPTIONS,
   DIFFICULTY_LEVELS,
   type ContentAnalysis,
+  type CardType,
   type GenerationPlan,
   type KnowledgeCard,
   type ModelOption,
   type PushChannelStatus,
   type SSEMessage,
+  type UsagePayload,
 } from '@/lib/types';
 
 const SAMPLE_TEXT = `# RAG（检索增强生成）技术详解
@@ -53,7 +60,6 @@ RAG 系统主要包括文档处理、检索和生成三个模块。相比只依�
 
 RAG 适合知识频繁变化的场景；微调更适合改变模型的行为模式。实际应用中，两者可以结合使用。`;
 
-type CardTypeOption = (typeof CARD_TYPE_OPTIONS)[number]['value'];
 type ActiveView = 'create' | 'decks' | 'push' | 'models';
 type TestResult = { ok: boolean; message: string; latencyMs?: number };
 
@@ -90,11 +96,9 @@ async function readJson<T>(response: Response, fallbackMessage: string): Promise
 function buildAnalysisKey(
   content: string,
   modelId: string,
-  cardType: CardTypeOption,
-  difficulty: number,
 ): string {
   let hash = 2166136261;
-  const value = `${modelId}\u0000${cardType}\u0000${difficulty}\u0000${content}`;
+  const value = `${modelId}\u0000${content}`;
   for (let index = 0; index < value.length; index++) {
     hash ^= value.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
@@ -102,10 +106,63 @@ function buildAnalysisKey(
   return `${value.length}-${(hash >>> 0).toString(16)}`;
 }
 
+const KNOWLEDGE_KIND_CARD_TYPE: Record<ContentAnalysis['knowledgePointItems'][number]['knowledge_type'], CardType> = {
+  fact: 'cloze',
+  definition: 'def',
+  comparison: 'compare',
+  sequence: 'sequence',
+  formula: 'cloze',
+  application: 'qa',
+};
+
+function buildTypeDistribution(
+  analysis: ContentAnalysis | null,
+  total: number,
+  selectedTypes: CardType[],
+): Array<{ type: CardType; count: number }> {
+  if (!analysis || total < 1) return [];
+  const availableTypes = selectedTypes.length > 0
+    ? selectedTypes
+    : (Object.keys(CARD_TYPE_META) as CardType[]);
+  const weights = Object.fromEntries(availableTypes.map((type) => [type, 0])) as Partial<Record<CardType, number>>;
+
+  for (const point of analysis.knowledgePointItems) {
+    const suggestedType = KNOWLEDGE_KIND_CARD_TYPE[point.knowledge_type];
+    if (suggestedType in weights) weights[suggestedType] = (weights[suggestedType] || 0) + point.suggested_cards;
+    else if ('qa' in weights) weights.qa = (weights.qa || 0) + point.suggested_cards;
+  }
+  if (selectedTypes.length === 0) {
+    weights.qa = (weights.qa || 0) + 1;
+    if (analysis.signals.comparisons > 0) weights.compare = (weights.compare || 0) + analysis.signals.comparisons;
+    if (analysis.signals.processes > 0) weights.sequence = (weights.sequence || 0) + analysis.signals.processes;
+  }
+
+  let weightTotal = availableTypes.reduce((sum, type) => sum + (weights[type] || 0), 0);
+  if (weightTotal === 0) {
+    for (const type of availableTypes) weights[type] = 1;
+    weightTotal = availableTypes.length;
+  }
+
+  const raw = availableTypes.map((type) => ({
+    type,
+    exact: ((weights[type] || 0) / weightTotal) * total,
+  }));
+  const result = raw.map(({ type, exact }) => ({ type, count: Math.floor(exact), remainder: exact % 1 }));
+  let remaining = total - result.reduce((sum, item) => sum + item.count, 0);
+  for (const item of [...result].sort((a, b) => b.remainder - a.remainder)) {
+    if (remaining-- <= 0) break;
+    item.count++;
+  }
+  return result.filter((item) => item.count > 0).map(({ type, count }) => ({ type, count }));
+}
+
 export default function Home() {
   const [activeView, setActiveView] = useState<ActiveView>('create');
   const [content, setContent] = useState('');
-  const [cardType, setCardType] = useState<CardTypeOption>('mixed');
+  const [selectedCardTypes, setSelectedCardTypes] = useState<CardType[]>([]);
+  const [showCardPrinciples, setShowCardPrinciples] = useState(false);
+  const [showAnalysisLogic, setShowAnalysisLogic] = useState(false);
+  const [showFullContent, setShowFullContent] = useState(true);
   const [difficulty, setDifficulty] = useState(3);
   const [analysis, setAnalysis] = useState<ContentAnalysis | null>(null);
   const [analysisKey, setAnalysisKey] = useState('');
@@ -118,6 +175,8 @@ export default function Home() {
   const [selectedModelId, setSelectedModelId] = useState('');
   const [modelTests, setModelTests] = useState<Record<string, TestResult>>({});
   const [testingModelId, setTestingModelId] = useState('');
+  const [usage, setUsage] = useState<UsagePayload | null>(null);
+  const [isLoadingUsage, setIsLoadingUsage] = useState(false);
   const [channels, setChannels] = useState<PushChannelStatus[]>([]);
   const [selectedPushDeckId, setSelectedPushDeckId] = useState('');
   const [pushingChannelId, setPushingChannelId] = useState('');
@@ -140,8 +199,8 @@ export default function Home() {
   const selectedModel = models.find((model) => model.id === selectedModelId);
   const selectedPushDeck = decks.find((deck) => deck.id === selectedPushDeckId);
   const currentAnalysisKey = useMemo(
-    () => buildAnalysisKey(content, selectedModelId, cardType, difficulty),
-    [cardType, content, difficulty, selectedModelId],
+    () => buildAnalysisKey(content, selectedModelId),
+    [content, selectedModelId],
   );
   const analysisIsCurrent = analysis !== null && analysisKey === currentAnalysisKey;
   const parsedCustomCount = Number.parseInt(customCardCount, 10);
@@ -168,6 +227,16 @@ export default function Home() {
       }, {}),
     [cards],
   );
+  const typeDistribution = useMemo(
+    () => buildTypeDistribution(analysisIsCurrent ? analysis : null, actualCardCount, selectedCardTypes),
+    [actualCardCount, analysis, analysisIsCurrent, selectedCardTypes],
+  );
+
+  const toggleCardType = (type: CardType) => {
+    setSelectedCardTypes((current) => current.includes(type)
+      ? current.filter((item) => item !== type)
+      : [...current, type]);
+  };
 
   const loadModels = useCallback(async () => {
     try {
@@ -184,6 +253,18 @@ export default function Home() {
     }
   }, []);
 
+  const loadUsage = useCallback(async () => {
+    setIsLoadingUsage(true);
+    try {
+      const data = await readJson<UsagePayload>(await fetch('/api/usage?limit=50'), '读取用量记录失败');
+      setUsage(data);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '读取用量记录失败');
+    } finally {
+      setIsLoadingUsage(false);
+    }
+  }, []);
+
   useEffect(() => {
     const stored = localStorage.getItem('anki-theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -196,6 +277,10 @@ export default function Home() {
       .then((data) => setChannels(data.channels))
       .catch(() => setChannels([]));
   }, [loadModels]);
+
+  useEffect(() => {
+    if (activeView === 'models') void loadUsage();
+  }, [activeView, loadUsage]);
 
   useEffect(() => {
     if (!selectedPushDeckId && decks[0]) setSelectedPushDeckId(decks[0].id);
@@ -227,14 +312,13 @@ export default function Home() {
           body: JSON.stringify({
             content,
             modelId: selectedModelId || undefined,
-            cardType,
-            difficulty,
           }),
         }),
         '内容分析失败',
       );
       setAnalysis(result);
       setAnalysisKey(currentAnalysisKey);
+      setShowFullContent(false);
       setGenerationPlan('recommended');
       setCustomCardCount(String(result.suggestions.recommended));
       if (result.mode === 'ai') {
@@ -276,7 +360,7 @@ export default function Home() {
         body: JSON.stringify({
           content,
           cardCount: actualCardCount,
-          cardType,
+          cardTypes: selectedCardTypes,
           difficulty,
           modelId: selectedModelId,
           generationPlan,
@@ -303,7 +387,13 @@ export default function Home() {
           if (!line.trim().startsWith('data: ')) continue;
           const message = JSON.parse(line.trim().slice(6)) as SSEMessage;
           if (message.type === 'card') setCards((current) => [...current, message.data]);
-          if (message.type === 'done') toast.success(`成功生成 ${message.data.total} 张卡片`);
+          if (message.type === 'done') {
+            if (message.data.complete === false || (message.data.requested && message.data.total < message.data.requested)) {
+              toast.warning(`计划生成 ${message.data.requested ?? actualCardCount} 张，已生成 ${message.data.total} 张；可再次生成补充。`);
+            } else {
+              toast.success(`成功生成 ${message.data.total} 张卡片`);
+            }
+          }
           if (message.type === 'error') toast.error(message.data.message);
         }
       }
@@ -379,7 +469,7 @@ export default function Home() {
   };
 
   const handleAddCard = () => {
-    const type = cardType === 'mixed' ? 'qa' : cardType;
+    const type = selectedCardTypes[0] || 'qa';
     setCards((current) => [
       ...current,
       {
@@ -471,6 +561,7 @@ export default function Home() {
       toast.error(message);
     } finally {
       setTestingModelId('');
+      void loadUsage();
     }
   };
 
@@ -646,12 +737,35 @@ export default function Home() {
                     />
                   </div>
 
-                  <Textarea
-                    value={content}
-                    onChange={(event) => setContent(event.target.value)}
-                    placeholder="将教材、论文、笔记、字幕粘贴进来..."
-                    className="min-h-[240px] resize-y bg-card-warm text-sm leading-relaxed"
-                  />
+                  {analysisIsCurrent && !showFullContent ? (
+                    <div className="rounded-lg border border-border bg-card-warm px-3 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+                          {content.replace(/```[\s\S]*?```/g, '[图表或代码块]').slice(0, 280)}
+                          {content.length > 280 ? '…' : ''}
+                        </p>
+                        <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" onClick={() => setShowFullContent(true)}>
+                          展开全文编辑
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <Textarea
+                        value={content}
+                        onChange={(event) => setContent(event.target.value)}
+                        placeholder="将教材、论文、笔记、字幕粘贴进来..."
+                        className="min-h-[240px] resize-y bg-card-warm text-sm leading-relaxed"
+                      />
+                      {analysisIsCurrent && (
+                        <div className="mt-1 flex justify-end">
+                          <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setShowFullContent(false)}>
+                            收起全文
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  )}
                   <div className="mt-1.5 flex justify-between text-[11px] text-muted-foreground">
                     <span>{content.length} 字</span>
                     <span>支持 txt / md / csv / json / html</span>
@@ -679,8 +793,9 @@ export default function Home() {
                   )}
                 </div>
 
+                <div className="rounded-xl border border-indigo/15 bg-card p-4 shadow-sm">
                 {(analysis || isAnalyzing) && (
-                  <div className="rounded-xl border border-indigo/15 bg-card p-4 shadow-sm">
+                  <div>
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo">智能拆卡建议</p>
@@ -724,6 +839,20 @@ export default function Home() {
                         </div>
 
                         <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{analysis.reason}</p>
+                        <button
+                          type="button"
+                          className="mt-2 flex items-center gap-1 text-[11px] font-medium text-indigo"
+                          onClick={() => setShowAnalysisLogic((current) => !current)}
+                          aria-expanded={showAnalysisLogic}
+                        >
+                          {showAnalysisLogic ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                          {showAnalysisLogic ? '收起分析逻辑' : '分析逻辑是什么？'}
+                        </button>
+                        {showAnalysisLogic && (
+                          <div className="mt-2 rounded-lg bg-muted/60 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                            先统计标题、句子、列表、公式、对比和流程等结构信号，再由 AI 去掉铺垫与重复内容并提取原子知识点；最后根据知识点数量、核心程度和复杂结构计算精简、推荐、全面三档数量。架构图会拆成层职责、调用关系和数据流，不会要求整图默写。
+                          </div>
+                        )}
                         {analysis.warning && (
                           <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-soft/70 px-3 py-2 text-xs leading-relaxed text-amber">
                             <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -821,38 +950,39 @@ export default function Home() {
                   </div>
                 )}
 
-                <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo">科学拆卡原则</p>
-                      <h2 className="mt-1 text-sm font-semibold">不是越多越好，而是越容易主动回忆越好</h2>
-                    </div>
-                    <CheckCircle2 className="h-5 w-5 shrink-0 text-indigo" />
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    {[
-                      ['一卡一知识点', '降低单次回忆负担'],
-                      ['问题能独立理解', '避免“上述、它、这个”'],
-                      ['答案保持最小信息', '过长内容自动拆分'],
-                      ['忠于用户原文', '不补写没有依据的事实'],
-                    ].map(([title, description]) => (
-                      <div key={title} className="rounded-lg bg-muted/60 px-3 py-2.5">
-                        <div className="text-xs font-semibold">{title}</div>
-                        <div className="mt-1 text-[10px] leading-relaxed text-muted-foreground">{description}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-4 rounded-xl border border-border bg-card p-4 shadow-sm">
+                <div className={`${analysis || isAnalyzing ? 'mt-4 border-t border-border pt-4' : ''} space-y-4`}>
                   <div>
-                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">卡片类型</label>
+                    <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+                      <div>
+                        <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">卡片类型</label>
+                        <p className="mt-1 text-[11px] text-muted-foreground">默认由 AI 混合推荐；也可选择一种或多种类型。</p>
+                      </div>
+                      {typeDistribution.length > 0 && (
+                        <div className="flex flex-wrap justify-end gap-1.5 text-[11px]">
+                          <span className="text-muted-foreground">本次预计</span>
+                          {typeDistribution.map((item) => (
+                            <span key={item.type} className="rounded-full bg-indigo-soft px-2 py-0.5 font-medium text-indigo">
+                              {CARD_TYPE_META[item.type].shortLabel} {item.count}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <div className="flex flex-wrap gap-2">
-                      {CARD_TYPE_OPTIONS.map((option) => (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCardTypes([])}
+                        className={`chip ${selectedCardTypes.length === 0 ? 'active' : ''}`}
+                        title={CARD_TYPE_OPTIONS[0].description}
+                      >
+                        {CARD_TYPE_OPTIONS[0].label}（推荐）
+                      </button>
+                      {CARD_TYPE_OPTIONS.slice(1).map((option) => (
                         <button
                           key={option.value}
-                          onClick={() => setCardType(option.value)}
-                          className={`chip ${cardType === option.value ? 'active' : ''}`}
+                          type="button"
+                          onClick={() => toggleCardType(option.value as CardType)}
+                          className={`chip ${selectedCardTypes.includes(option.value as CardType) ? 'active' : ''}`}
                           title={option.description}
                         >
                           {option.label}
@@ -900,6 +1030,42 @@ export default function Home() {
                       </div>
                     </div>
                   </div>
+                  <div className="border-t border-border pt-3">
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-3 text-left"
+                      onClick={() => setShowCardPrinciples((current) => !current)}
+                      aria-expanded={showCardPrinciples}
+                    >
+                      <span className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-indigo" />
+                        <span>
+                          <span className="block text-xs font-semibold">科学拆卡原则</span>
+                          <span className="mt-0.5 block text-[10px] text-muted-foreground">一卡一知识点、问题独立、答案精简、忠于原文</span>
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-1 text-[11px] text-indigo">
+                        {showCardPrinciples ? '收起' : '查看'}
+                        {showCardPrinciples ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      </span>
+                    </button>
+                    {showCardPrinciples && (
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        {[
+                          ['一卡一知识点', '降低单次回忆负担'],
+                          ['问题能独立理解', '避免“上述、它、这个”'],
+                          ['答案保持最小信息', '过长内容自动拆分'],
+                          ['忠于用户原文', '不补写没有依据的事实'],
+                        ].map(([title, description]) => (
+                          <div key={title} className="rounded-lg bg-muted/60 px-3 py-2.5">
+                            <div className="text-xs font-semibold">{title}</div>
+                            <div className="mt-1 text-[10px] leading-relaxed text-muted-foreground">{description}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -1069,6 +1235,84 @@ export default function Home() {
                 );
               })}
             </div>
+            <section className="mt-6 rounded-2xl border bg-card p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo">Token ledger</p>
+                  <h2 className="mt-1 text-lg font-semibold">模型用量账本</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    每次分析、生成和连通测试都会在服务端记录；不保存 Key、Webhook 或材料原文。
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button asChild variant="outline" size="sm"><Link href="/admin/usage"><ShieldCheck className="mr-1.5 h-3.5 w-3.5" />管理员详情</Link></Button>
+                  <Button variant="outline" size="sm" onClick={() => void loadUsage()} disabled={isLoadingUsage}>
+                    <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isLoadingUsage ? 'animate-spin' : ''}`} />刷新
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  ['累计请求', usage?.summary.requestCount ?? 0],
+                  ['输入 Token', usage?.summary.promptTokens ?? 0],
+                  ['输出 Token', usage?.summary.completionTokens ?? 0],
+                  ['总 Token', usage?.summary.totalTokens ?? 0],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl bg-card-warm p-4">
+                    <p className="text-xs text-muted-foreground">{label}</p>
+                    <p className="mt-1 text-xl font-semibold tabular-nums">{Number(value).toLocaleString('zh-CN')}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 overflow-x-auto rounded-xl border">
+                <table className="w-full min-w-[920px] text-left text-xs">
+                  <thead className="bg-muted/50 text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2.5 font-medium">时间</th>
+                      <th className="px-3 py-2.5 font-medium">用途</th>
+                      <th className="px-3 py-2.5 font-medium">模型</th>
+                      <th className="px-3 py-2.5 text-right font-medium">输入</th>
+                      <th className="px-3 py-2.5 text-right font-medium">输出</th>
+                      <th className="px-3 py-2.5 text-right font-medium">合计</th>
+                      <th className="px-3 py-2.5 text-right font-medium">耗时</th>
+                      <th className="px-3 py-2.5 font-medium">状态</th>
+                      <th className="px-3 py-2.5 font-medium">详情</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usage?.records.slice(0, 20).map((record) => (
+                      <tr key={record.id} className="border-t">
+                        <td className="whitespace-nowrap px-3 py-2.5">{new Date(record.timestamp).toLocaleString('zh-CN')}</td>
+                        <td className="px-3 py-2.5">{{ analyze: '内容分析', generate: '生成卡片', model_test: '连通测试' }[record.operation]}</td>
+                        <td className="px-3 py-2.5">{record.modelLabel}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{record.usage?.promptTokens?.toLocaleString('zh-CN') ?? '—'}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{record.usage?.completionTokens?.toLocaleString('zh-CN') ?? '—'}</td>
+                        <td className="px-3 py-2.5 text-right font-medium tabular-nums">{record.usage?.totalTokens?.toLocaleString('zh-CN') ?? '—'}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{record.latencyMs.toLocaleString('zh-CN')}ms</td>
+                        <td className={`px-3 py-2.5 ${record.status === 'success' ? 'text-emerald-600' : record.status === 'cancelled' ? 'text-amber' : 'text-destructive'}`}>
+                          {{ success: '成功', error: '失败', cancelled: '已取消' }[record.status]}
+                        </td>
+                        <td className="max-w-56 truncate px-3 py-2.5 text-muted-foreground" title={record.error || JSON.stringify(record.metadata || {})}>
+                          {record.error
+                            || (record.metadata?.requestedCards ? `目标 ${record.metadata.requestedCards} 张 · ` : '')
+                            + (record.metadata?.contentCharacters ? `${record.metadata.contentCharacters} 字符 · ` : '')
+                            + (record.usage?.promptCacheHitTokens ? `缓存命中 ${record.usage.promptCacheHitTokens}` : '无敏感正文')}
+                        </td>
+                      </tr>
+                    ))}
+                    {!usage?.records.length && (
+                      <tr><td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">暂无记录；测试模型或生成卡片后会自动出现。</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                本地明细文件：<code className="rounded bg-muted px-1.5 py-0.5">{usage?.storage || 'data/llm-usage.jsonl'}</code>。该文件已被 Git 忽略。
+                {usage && usage.summary.promptCacheHitTokens > 0 ? ` 缓存命中 ${usage.summary.promptCacheHitTokens.toLocaleString('zh-CN')} Token。` : ''}
+              </p>
+            </section>
             <div className="mt-5 rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
               还可通过 <code>CUSTOM_LLM_API_KEY</code>、<code>CUSTOM_LLM_BASE_URL</code> 和 <code>CUSTOM_LLM_MODELS</code> 接入其他 OpenAI 兼容服务；模型之间可在生成页即时切换。
             </div>

@@ -10,6 +10,8 @@ import type {
 
 const MAX_GENERATION_CHARS = 20_000;
 const MAX_SINGLE_BATCH_CARDS = 120;
+const MAX_CARDS_PER_MODEL_CALL = 24;
+const VALID_CARD_TYPES: CardType[] = ['qa', 'cloze', 'def', 'reverse', 'compare', 'sequence'];
 
 function toCardType(value: unknown): CardType {
   return value === 'cloze' ||
@@ -19,6 +21,20 @@ function toCardType(value: unknown): CardType {
     value === 'sequence'
     ? value
     : 'qa';
+}
+
+function normalizeRequestedCardTypes(cardTypes: unknown, legacyCardType: unknown): CardType[] {
+  const requested = Array.isArray(cardTypes)
+    ? cardTypes.filter((type): type is CardType => VALID_CARD_TYPES.includes(type as CardType))
+    : [];
+  if (requested.length > 0) return [...new Set(requested)];
+  return VALID_CARD_TYPES.includes(legacyCardType as CardType) ? [legacyCardType as CardType] : [];
+}
+
+function enforceRequestedCardType(value: unknown, requestedTypes: CardType[], index: number): CardType {
+  const modelType = toCardType(value);
+  if (requestedTypes.length === 0 || requestedTypes.includes(modelType)) return modelType;
+  return requestedTypes[index % requestedTypes.length];
 }
 
 /**
@@ -82,47 +98,35 @@ function extractCompleteObjects(
 function buildPrompt(
   content: string,
   cardCount: number,
-  preferCloze: boolean,
-  coverAll: boolean,
-  cardType: string,
+  requestedTypes: CardType[],
   difficulty: number,
   generationPlan: GenerationPlan,
+  previousQuestions: string[],
   analysis?: ContentAnalysis,
 ): string {
   const diffLabels = ['', '轻松', '较易', '中等', '较难', '困难'];
   const diffLabel = diffLabels[difficulty] || '中等';
 
-  let typeInstruction = '';
-  if (cardType === 'mixed') {
-    typeInstruction = '根据内容自动选择最合适的卡片类型（qa、cloze、def）。';
-  } else if (cardType === 'qa') {
-    typeInstruction = '只生成问答卡（qa）。';
-  } else if (cardType === 'cloze') {
-    typeInstruction = '只生成填空题（cloze），用 {{c1::答案}} 标记答案。';
-  } else if (cardType === 'def') {
-    typeInstruction = '只生成定义卡（def），question 字段放"什么是 XX？"形式的问题，answer 字段放详细定义。';
-  } else if (cardType === 'reverse') {
-    typeInstruction = '只生成双向卡（reverse），question 和 answer 必须都是可独立识别、适合正反两个方向复习的内容。';
-  } else if (cardType === 'compare') {
-    typeInstruction = '只生成对比卡（compare），question 明确指出需要比较的两个概念，answer 用简洁的相同点和不同点回答。';
-  } else if (cardType === 'sequence') {
-    typeInstruction = '只生成步骤卡（sequence），question 询问流程或顺序，answer 用有序步骤回答。';
-  } else if (preferCloze) {
-    typeInstruction = '优先使用填空题（cloze）格式，用 {{c1::答案}} 标记答案。';
-  } else {
-    typeInstruction = '灵活使用问答（qa）和填空题（cloze）格式。';
-  }
+  const typeDetails: Record<CardType, string> = {
+    qa: 'qa：问题放 question，答案放 answer',
+    cloze: 'cloze：question 必须包含 {{c1::答案}}，answer 留空',
+    def: 'def：用于概念定义，question 询问“什么是 XX”',
+    reverse: 'reverse：question 与 answer 均适合独立作为提示',
+    compare: 'compare：明确比较两个概念的相同点和不同点',
+    sequence: 'sequence：用于流程、步骤或有序列表',
+  };
+  const typeInstruction = requestedTypes.length === 0
+    ? `采用混合模式，根据每个知识点的结构，在 ${VALID_CARD_TYPES.join('、')} 中选择最合适的类型。不要机械地全部使用同一种类型。`
+    : `用户只允许以下卡片类型：${requestedTypes.join('、')}。每张卡片的 card_type 必须是这些值之一，绝对不得输出其他类型。${requestedTypes.map((type) => typeDetails[type]).join('；')}。${requestedTypes.length > 1 ? '在内容适合且数量足够时，应覆盖用户选择的每一种类型。' : ''}`;
 
-  const countInstruction = coverAll
-    ? `请覆盖文本中的所有关键知识点，根据内容量生成合适数量的卡片，确保没有遗漏任何重要知识点。不要限制卡片数量，宁多勿少。`
-    : `请根据以下内容生成 ${cardCount} 张高质量的学习卡片。`;
+  const countInstruction = `本批必须生成恰好 ${cardCount} 张高质量学习卡片。先规划 ${cardCount} 个互不重复的原子知识点，再一次性输出全部卡片。`;
 
   const difficultyInstruction = `难度倾向：${diffLabel}（1=轻松，5=困难）。`;
   const planLabels: Record<GenerationPlan, string> = {
     concise: '精简复习：只保留核心、高频和最值得主动回忆的内容',
     recommended: '标准推荐：覆盖核心知识点，并保留重要辨析、公式和流程',
     comprehensive: '全面覆盖：在避免重复的前提下覆盖核心、重要和补充知识点',
-    custom: '自定义数量：优先保证原子性和有效性，不为凑数制造同义重复',
+    custom: '自定义数量：在保持原子性和有效性的前提下达到用户指定数量',
   };
   const analyzedKnowledgePoints = analysis?.knowledgePointItems
     .map((item) => `- [${item.importance}/${item.knowledge_type}] ${item.title}（建议 ${item.suggested_cards} 张）`)
@@ -135,6 +139,11 @@ ${analyzedKnowledgePoints ? `优先参考的知识点：\n${analyzedKnowledgePoi
 分析结果只用于规划，最终答案必须以待处理原文为依据。`
     : `【生成方案】
 ${planLabels[generationPlan]}。`;
+  const deduplicationInstruction = previousQuestions.length > 0
+    ? `【前面批次已经生成的问题】
+${previousQuestions.slice(-30).map((question) => `- ${question}`).join('\n')}
+本批不得重复考查这些问题或仅做同义改写。`
+    : '';
 
   return `你是一个专业的 Anki 记忆卡片生成器。${countInstruction}${difficultyInstruction}
 
@@ -145,11 +154,14 @@ ${planLabels[generationPlan]}。`;
 4. 普通答案优先控制在 40 个汉字以内；超过 80 个汉字时必须拆卡，除非是不可再拆的步骤或对比
 5. 先在内部把原文拆成原子知识点，再生成卡片；不要输出拆分过程或思考过程
 6. 问题不能无意泄露答案，答案不得补充原文没有依据的事实
-7. 不要为达到数量制造同义改写或低价值重复；若有效知识不足，可以少于目标数量
+7. 不要制造同义改写或低价值重复；通过拆分定义、职责、关系、步骤、原因、示例和易混点达到本批指定数量
 8. 三项以上列表、易混概念、公式含义与应用可以拆成多张互补卡片
 9. 根据内容自动判断分类（category），并填写能定位原文的 source_section
+10. 遇到 ASCII、Mermaid 或文字架构图，禁止生成“画出/复现/默写完整架构图”这类卡；必须拆成“某层职责是什么”“A 层如何调用 B 层”“一条请求经过哪些层”等可独立回答的小卡
 
 ${analysisInstruction}
+
+${deduplicationInstruction}
 
 【卡片类型说明】
 - cloze（填空题）：在 question 字段中用 {{c1::答案}} 标记需要填空的部分，answer 字段留空
@@ -188,9 +200,8 @@ export async function POST(request: NextRequest) {
   const {
     content,
     cardCount = 15,
-    preferCloze = true,
-    coverAll = false,
     cardType = 'mixed',
+    cardTypes,
     difficulty = 3,
     modelId,
     generationPlan = 'recommended',
@@ -198,14 +209,14 @@ export async function POST(request: NextRequest) {
   } = body as {
     content: string;
     cardCount?: number;
-    preferCloze?: boolean;
-    coverAll?: boolean;
     cardType?: string;
+    cardTypes?: CardType[];
     difficulty?: number;
     modelId?: string;
     generationPlan?: GenerationPlan;
     analysis?: ContentAnalysis;
   };
+  const requestedTypes = normalizeRequestedCardTypes(cardTypes, cardType);
 
   if (!content || content.trim().length < 5) {
     return new Response(
@@ -228,27 +239,6 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: message }, { status: 500 });
   }
 
-  const messages = [
-    {
-      role: 'system' as const,
-      content:
-        '你是一个专业的 Anki 记忆卡片生成器。只返回 JSON 数组，不包含任何其他文字、解释或 markdown 标记。',
-    },
-    {
-      role: 'user' as const,
-      content: buildPrompt(
-        content,
-        Math.round(cardCount),
-        preferCloze,
-        coverAll,
-        cardType,
-        difficulty,
-        generationPlan,
-        analysis,
-      ),
-    },
-  ];
-
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -259,49 +249,86 @@ export async function POST(request: NextRequest) {
       };
 
       try {
-        let fullText = '';
         let sentCount = 0;
         const cardTimestamp = Date.now();
+        const targetCount = Math.round(cardCount);
+        const seenQuestions = new Set<string>();
+        const previousQuestions: string[] = [];
+        const maxAttempts = Math.ceil(targetCount / MAX_CARDS_PER_MODEL_CALL) + 3;
 
-        for await (const text of streamChatCompletion(selectedModel, messages, request.signal)) {
-          fullText += text;
+        for (let attempt = 0; sentCount < targetCount && attempt < maxAttempts; attempt++) {
+          const batchTarget = Math.min(MAX_CARDS_PER_MODEL_CALL, targetCount - sentCount);
+          const messages = [
+            {
+              role: 'system' as const,
+              content: '你是一个专业的 Anki 记忆卡片生成器。只返回 JSON 数组，不包含任何其他文字、解释或 markdown 标记。',
+            },
+            {
+              role: 'user' as const,
+              content: buildPrompt(
+                content,
+                batchTarget,
+                requestedTypes,
+                difficulty,
+                generationPlan,
+                previousQuestions,
+                analysis,
+              ),
+            },
+          ];
+          let fullText = '';
+          let parsedObjectCount = 0;
 
-          // 每次只发送新出现的完整对象。
-          const objects = extractCompleteObjects(fullText);
-          for (let i = sentCount; i < objects.length; i++) {
-              const obj = objects[i];
+          const emitNewObjects = (objects: Record<string, unknown>[]) => {
+            for (let index = parsedObjectCount; index < objects.length && sentCount < targetCount; index++) {
+              parsedObjectCount++;
+              const obj = objects[index];
+              const question = typeof obj.question === 'string' ? obj.question.trim() : '';
+              if (!question) continue;
+              const questionKey = question.toLocaleLowerCase('zh-CN').replace(/[\s，。！？、；：,.!?;:]/g, '');
+              if (!questionKey || seenQuestions.has(questionKey)) continue;
+
               const card: KnowledgeCard = {
                 id: `card-${cardTimestamp}-${sentCount}`,
-                question: (obj.question as string) || '',
-                answer: (obj.answer as string) || '',
-                category: (obj.category as string) || '通用',
-                card_type: toCardType(obj.card_type),
-                source_section: (obj.source_section as string) || (obj.category as string) || '通用',
+                question,
+                answer: typeof obj.answer === 'string' ? obj.answer : '',
+                category: typeof obj.category === 'string' && obj.category.trim() ? obj.category.trim() : '通用',
+                card_type: enforceRequestedCardType(obj.card_type, requestedTypes, sentCount),
+                source_section: typeof obj.source_section === 'string' && obj.source_section.trim()
+                  ? obj.source_section.trim()
+                  : (typeof obj.category === 'string' && obj.category.trim() ? obj.category.trim() : '通用'),
               };
+              seenQuestions.add(questionKey);
+              previousQuestions.push(question);
               send({ type: 'card', data: card });
               sentCount++;
+            }
+          };
+
+          for await (const text of streamChatCompletion(selectedModel, messages, request.signal, {
+            operation: 'generate',
+            metadata: {
+              contentCharacters: Math.min(content.length, MAX_GENERATION_CHARS),
+              requestedCards: batchTarget,
+              logicalRequestedCards: targetCount,
+              batchNumber: attempt + 1,
+              cardTypes: requestedTypes.length > 0 ? requestedTypes.join('|') : 'mixed',
+              difficulty,
+              generationPlan,
+              truncated: content.length > MAX_GENERATION_CHARS,
+            },
+          })) {
+            fullText += text;
+            emitNewObjects(extractCompleteObjects(fullText));
           }
+          emitNewObjects(extractCompleteObjects(fullText));
+          send({ type: 'progress', data: { current: sentCount, total: targetCount } });
         }
 
-        // 流结束后，尝试解析剩余文本中的完整对象
-        const finalObjects = extractCompleteObjects(fullText);
-        if (finalObjects.length > sentCount) {
-          for (let i = sentCount; i < finalObjects.length; i++) {
-            const obj = finalObjects[i];
-            const card: KnowledgeCard = {
-              id: `card-${cardTimestamp}-${i}`,
-              question: (obj.question as string) || '',
-              answer: (obj.answer as string) || '',
-              category: (obj.category as string) || '通用',
-              card_type: toCardType(obj.card_type),
-              source_section: (obj.source_section as string) || (obj.category as string) || '通用',
-            };
-            send({ type: 'card', data: card });
-            sentCount++;
-          }
-        }
-
-        send({ type: 'done', data: { total: sentCount } });
+        send({
+          type: 'done',
+          data: { total: sentCount, requested: targetCount, complete: sentCount === targetCount },
+        });
       } catch (error) {
         const message =
           error instanceof Error ? error.message : '生成卡片时发生未知错误';

@@ -192,6 +192,7 @@ function buildAnalysisPrompt(content: string, local: ReturnType<typeof getDocume
 3. 三项以上列表、复杂公式、易混概念和流程可以建议多张卡片。
 4. 删除重复、铺垫、广告、修辞和不适合长期记忆的内容。
 5. 不得虚构原文没有的知识。
+6. 遇到 ASCII、Mermaid 或文字架构图时，不要把“画出整张图”当作一个知识点；应拆成各层职责、相邻层调用关系和关键数据流。
 
 【本地统计】
 有效字符约 ${local.characters}，章节约 ${local.sections}，句子约 ${local.sentences}，
@@ -252,7 +253,13 @@ export async function POST(request: NextRequest) {
       },
     ];
     let fullText = '';
-    for await (const chunk of streamChatCompletion(model, messages, request.signal)) {
+    for await (const chunk of streamChatCompletion(model, messages, request.signal, {
+      operation: 'analyze',
+      metadata: {
+        contentCharacters: analysisContent.length,
+        truncated: content.length > MAX_ANALYSIS_CHARS,
+      },
+    })) {
       fullText += chunk;
     }
 

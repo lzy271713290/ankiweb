@@ -55,6 +55,14 @@ CUSTOM_LLM_MODELS=model-a|模型 A,model-b|模型 B
 
 也可继续使用 `LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL` 配置单个兼容模型。文件导入支持 txt、md、csv、json、html 等纯文本格式。
 
+### 查看 Token 用量
+
+模型设置页包含“模型用量账本”，自动记录每次内容分析、卡片生成和连通测试的模型、时间、输入/输出/总 Token、缓存命中、耗时、状态与非敏感请求参数。
+
+本地管理员可打开 <http://localhost:5000/admin/usage>，查看今日、历史总计、每日汇总、按模型汇总和每次请求明细。默认按 `Asia/Shanghai` 划分自然日，可通过 `USAGE_TIME_ZONE` 修改统计时区。
+
+明细保存在本机 `data/llm-usage.jsonl`，并通过只读接口 `GET /api/usage` 汇总展示。该文件已被 Git 忽略，不记录 API Key、Webhook 或用户材料原文。
+
 ### 卡组与推送
 
 - “我的卡组”保存在当前浏览器的本地存储中，不需要账号；清除浏览器数据会删除卡组。
