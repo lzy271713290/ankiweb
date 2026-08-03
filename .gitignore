@@ -119,6 +119,13 @@ pids
 *.pid
 *.seed
 *.pid.lock
+data/decks.sqlite
+data/decks.sqlite.*.tmp
+data/exam-content.sqlite
+data/exam-content.sqlite-*
+data/uploads/
+data/exam-assets/
+.venv-exam/
 # Diagnostic reports
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # Cache

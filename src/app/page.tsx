@@ -9,6 +9,7 @@ import {
   Bot,
   Brain,
   CheckCircle2,
+  ClipboardCheck,
   Clock3,
   Download,
   FileText,
@@ -33,6 +34,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AnkiCardItem } from '@/components/anki-card';
+import { ExamReview } from '@/components/exam-review';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Toaster } from '@/components/ui/sonner';
@@ -60,7 +62,7 @@ RAG 系统主要包括文档处理、检索和生成三个模块。相比只依�
 
 RAG 适合知识频繁变化的场景；微调更适合改变模型的行为模式。实际应用中，两者可以结合使用。`;
 
-type ActiveView = 'create' | 'decks' | 'push' | 'models';
+type ActiveView = 'create' | 'exams' | 'decks' | 'push' | 'models';
 type TestResult = { ok: boolean; message: string; latencyMs?: number };
 
 const PLAN_META: Array<{
@@ -82,6 +84,7 @@ const PLAN_LABELS: Record<GenerationPlan, string> = {
 
 const NAV_ITEMS: Array<{ id: ActiveView; label: string; icon: typeof Sparkles }> = [
   { id: 'create', label: '生成卡片', icon: Sparkles },
+  { id: 'exams', label: '真题审核', icon: ClipboardCheck },
   { id: 'decks', label: '我的卡组', icon: Layers3 },
   { id: 'push', label: '推送学习', icon: Send },
   { id: 'models', label: '模型设置', icon: Settings2 },
@@ -190,7 +193,7 @@ export default function Home() {
   const [fileName, setFileName] = useState('');
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { decks, saveDeck, deleteDeck } = useDecks();
+  const { decks, storageError, saveDeck, deleteDeck } = useDecks();
 
   const configuredModels = useMemo(
     () => models.filter((model) => model.configured),
@@ -448,15 +451,28 @@ export default function Home() {
     setCards((current) => current.filter((card) => card.id !== id));
   }, []);
 
-  const handleSaveDeck = () => {
+  const handleSaveDeck = async () => {
     if (cards.length === 0) {
       toast.error('请先生成或添加卡片');
       return;
     }
     const name = deckName.trim() || `学习卡组 ${decks.length + 1}`;
     setDeckName(name);
-    saveDeck(name, cards);
-    toast.success(`“${name}”已保存到我的卡组`);
+    try {
+      await saveDeck(name, cards);
+      toast.success(`“${name}”已保存到 SQLite 卡组库`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '保存卡组失败');
+    }
+  };
+
+  const handleDeleteDeck = async (id: string) => {
+    try {
+      await deleteDeck(id);
+      toast.info('卡组已删除');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '删除卡组失败');
+    }
   };
 
   const handleOpenDeck = (deckId: string) => {
@@ -587,6 +603,18 @@ export default function Home() {
     } finally {
       setPushingChannelId('');
     }
+  };
+
+  const handleUseExamForGeneration = (examContent: string, suggestedDeckName: string) => {
+    setContent(examContent);
+    setDeckName(suggestedDeckName);
+    setFileName('已确认真题');
+    setAnalysis(null);
+    setAnalysisKey('');
+    setShowFullContent(true);
+    setActiveView('create');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    toast.success('已载入审核后的真题，请先分析内容再调用模型生成卡片');
   };
 
   return (
@@ -1145,7 +1173,8 @@ export default function Home() {
               <div>
                 <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo">Local library</p>
                 <h1 className="text-2xl font-bold">我的卡组</h1>
-                <p className="mt-1 text-sm text-muted-foreground">保存在当前浏览器，可随时载入继续微调或导出。</p>
+                <p className="mt-1 text-sm text-muted-foreground">保存在服务端 SQLite，可随时载入继续微调或导出。</p>
+                {storageError && <p className="mt-1 text-xs text-destructive">SQLite 读取失败：{storageError}</p>}
               </div>
               <Button className="gap-1.5" onClick={() => setActiveView('create')}><Plus className="h-4 w-4" /> 新建卡组</Button>
             </div>
@@ -1161,10 +1190,20 @@ export default function Home() {
                   <article key={deck.id} className="group rounded-2xl border bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-soft text-indigo"><Layers3 className="h-5 w-5" /></div>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => {
-                        deleteDeck(deck.id);
-                        toast.info('卡组已删除');
-                      }}><Trash2 className="h-4 w-4" /></Button>
+                      {deck.storageKind === 'bundled' ? (
+                        <span className="rounded-full bg-indigo-soft px-2 py-1 text-[10px] font-medium text-indigo">
+                          内置 · v{deck.version || '1.0'}
+                        </span>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => void handleDeleteDeck(deck.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                     <h2 className="mt-4 truncate text-lg font-semibold">{deck.name}</h2>
                     <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
@@ -1182,6 +1221,10 @@ export default function Home() {
               </div>
             )}
           </div>
+        )}
+
+        {activeView === 'exams' && (
+          <ExamReview onUseForGeneration={handleUseExamForGeneration} />
         )}
 
         {activeView === 'models' && (

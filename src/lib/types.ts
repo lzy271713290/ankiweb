@@ -99,6 +99,8 @@ export interface SavedDeck {
   cards: KnowledgeCard[];
   createdAt: string;
   updatedAt: string;
+  storageKind?: 'bundled' | 'user';
+  version?: string;
 }
 
 export interface ModelOption {
@@ -165,6 +167,54 @@ export interface PushChannelStatus {
   label: string;
   configured: boolean;
   description: string;
+}
+
+export type ExamPaperStatus = 'registered' | 'reviewing' | 'confirmed';
+export type ExamReviewStatus = 'pending' | 'edited' | 'confirmed';
+export type ExamAssetDisplayMode = 'crop' | 'source_page' | 'hidden';
+
+export interface ExamPaperSummary {
+  id: string;
+  title: string;
+  year: number;
+  period: string;
+  status: ExamPaperStatus;
+  pageFrom: number;
+  pageTo: number;
+  questionCount: number;
+  issueCount: number;
+  editedCount: number;
+  confirmedCount: number;
+}
+
+export interface ExamQuestionAsset {
+  id: string;
+  type: 'question_figure' | 'explanation_figure';
+  sourcePage: number;
+  displayMode: ExamAssetDisplayMode;
+  imageUrl: string;
+  sourcePageUrl: string;
+}
+
+export interface ExamQuestion {
+  id: string;
+  paperId: string;
+  number: string;
+  stem: string;
+  options: Record<string, string>;
+  answer: string;
+  explanation: string;
+  sourcePageFrom: number;
+  sourcePageTo: number;
+  confidence: number;
+  reviewStatus: ExamReviewStatus;
+  issues: string[];
+  assets: ExamQuestionAsset[];
+}
+
+export interface ExamPaperDetail {
+  paper: ExamPaperSummary;
+  questions: ExamQuestion[];
 }
 
 /** 导出请求参数 */

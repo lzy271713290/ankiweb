@@ -65,10 +65,19 @@ CUSTOM_LLM_MODELS=model-a|模型 A,model-b|模型 B
 
 ### 卡组与推送
 
-- “我的卡组”保存在当前浏览器的本地存储中，不需要账号；清除浏览器数据会删除卡组。
+- “我的卡组”保存在服务端 `data/decks.sqlite` 中；旧版浏览器 LocalStorage 卡组会在首次打开页面时自动迁移，迁移成功后才清除旧数据。
+- 内置软考 45 卡会从 `content/decks/system-integration-pm-sample.json` 自动写入 SQLite，JSON 继续作为可审查、可版本管理的内容源。
 - 飞书群机器人：安全设置选择“关键词”并填写 `AnkiCard AI`，然后将 Webhook 写入 `FEISHU_WEBHOOK_URL`。
 - 企业微信群机器人：将 Webhook 写入 `WECOM_WEBHOOK_URL`。
 - 重启服务后进入“推送学习”，选择已保存卡组并发送。
+
+### 扫描版真题导入试验
+
+`scripts/exam_pipeline/` 提供扫描 PDF 的离线试验流水线：原文件复制到私有文件目录，按试卷拆页，应用页眉/页脚/二维码遮罩，使用 RapidOCR 离线识别，再把页面、选择题、案例题、答案、来源页和审核状态写入 `data/exam-content.sqlite`。该流程不调用大模型，不消耗 DeepSeek Token。
+
+首次安装和运行方式见 `scripts/exam_pipeline/README.md`。运行数据保存在 `data/uploads/`、`data/exam-assets/` 和 `data/exam-content.sqlite`，均不会提交 Git；代码仍会生成独立审核 HTML 和 JSON 完整性报告。
+
+处理完成后打开平台顶部“真题审核”：可按试卷查看75道选择题，筛选字段异常/已修改/待审核，修改题干、A-D选项、答案和解析，并将错误截图切换为裁剪图、来源整页或隐藏。保存任何修改都会使整卷确认失效；整卷字段完整且由用户点击确认后，才可选择最多20题送到“生成卡片”调用 DeepSeek。当前网页已接入审核与确认流程，但任意新 PDF 的网页上传、页段配置和异步 OCR 队列尚未实现。
 
 当前机器人集成为群聊即时推送。按用户单聊、定时复习、学习记录和跨设备卡组同步需要应用机器人、用户身份与服务端数据库。
 
