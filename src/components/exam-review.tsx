@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
+  ArrowLeft,
   CheckCircle2,
   ChevronDown,
   FileCheck2,
@@ -28,6 +29,8 @@ type QuestionFilter = 'all' | 'issues' | 'edited' | 'pending';
 
 interface ExamReviewProps {
   onUseForGeneration: (content: string, deckName: string) => void;
+  paperIds?: string[];
+  onBack?: () => void;
 }
 
 async function readJson<T>(response: Response, fallbackMessage: string): Promise<T> {
@@ -59,7 +62,7 @@ function questionToMaterial(question: ExamQuestion): string {
   return `【第${question.number}题】\n${question.stem}\n${options}\n答案：${question.answer}\n解析：${question.explanation}`;
 }
 
-export function ExamReview({ onUseForGeneration }: ExamReviewProps) {
+export function ExamReview({ onUseForGeneration, paperIds, onBack }: ExamReviewProps) {
   const [papers, setPapers] = useState<ExamPaperSummary[]>([]);
   const [paperId, setPaperId] = useState('');
   const [detail, setDetail] = useState<ExamPaperDetail | null>(null);
@@ -94,8 +97,11 @@ export function ExamReview({ onUseForGeneration }: ExamReviewProps) {
     setLoading(true);
     try {
       const data = await readJson<{ papers: ExamPaperSummary[] }>(await fetch('/api/exams'), '读取真题库失败');
-      setPapers(data.papers);
-      const nextId = data.papers.some((paper) => paper.id === paperId) ? paperId : data.papers[0]?.id || '';
+      const visiblePapers = paperIds?.length
+        ? data.papers.filter((paper) => paperIds.includes(paper.id))
+        : data.papers;
+      setPapers(visiblePapers);
+      const nextId = visiblePapers.some((paper) => paper.id === paperId) ? paperId : visiblePapers[0]?.id || '';
       setPaperId(nextId);
       if (nextId) await loadPaper(nextId);
       else setDetail(null);
@@ -106,7 +112,7 @@ export function ExamReview({ onUseForGeneration }: ExamReviewProps) {
     } finally {
       setLoading(false);
     }
-  }, [loadPaper, paperId]);
+  }, [loadPaper, paperId, paperIds]);
 
   useEffect(() => {
     void loadPapers();
@@ -245,21 +251,27 @@ export function ExamReview({ onUseForGeneration }: ExamReviewProps) {
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo">Review before generation</p>
-          <h1 className="text-2xl font-bold">真题审核</h1>
-          <p className="mt-1 text-sm text-muted-foreground">OCR 只负责预处理；用户修改并确认后，才允许调用大模型拆卡。</p>
+          <h1 className="text-2xl font-bold">OCR 预审核</h1>
+          <p className="mt-1 text-sm text-muted-foreground">请核对并修改识别结果；确认后才能导入首页生成卡片。</p>
         </div>
-        <Button variant="outline" className="gap-1.5" onClick={() => void loadPapers()} disabled={loading}>
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          刷新数据
-        </Button>
+        <div className="flex gap-2">
+          {onBack && (
+            <Button variant="outline" className="gap-1.5" onClick={onBack}>
+              <ArrowLeft className="h-4 w-4" />返回上传
+            </Button>
+          )}
+          <Button variant="outline" className="gap-1.5" onClick={() => void loadPapers()} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            刷新数据
+          </Button>
+        </div>
       </div>
 
       {papers.length === 0 && !loading ? (
         <div className="rounded-2xl border border-dashed bg-card/70 px-6 py-20 text-center">
           <FileCheck2 className="mx-auto h-10 w-10 text-muted-foreground/50" />
-          <h2 className="mt-4 font-semibold">还没有可审核的试卷</h2>
-          <p className="mt-2 text-sm text-muted-foreground">先运行本地 PDF 导入流水线，结果会自动出现在这里。</p>
-          <code className="mt-4 inline-block rounded bg-muted px-3 py-2 text-xs">scripts/exam_pipeline/import_exam_pdf.py</code>
+          <h2 className="mt-4 font-semibold">没有找到本次 PDF 的识别结果</h2>
+          <p className="mt-2 text-sm text-muted-foreground">请返回上传页重新执行 OCR；若刚完成识别，也可以点击刷新数据。</p>
         </div>
       ) : (
         <>

@@ -9,7 +9,6 @@ import {
   Bot,
   Brain,
   CheckCircle2,
-  ClipboardCheck,
   Clock3,
   Download,
   FileText,
@@ -62,8 +61,18 @@ RAG 系统主要包括文档处理、检索和生成三个模块。相比只依�
 
 RAG 适合知识频繁变化的场景；微调更适合改变模型的行为模式。实际应用中，两者可以结合使用。`;
 
-type ActiveView = 'create' | 'exams' | 'decks' | 'push' | 'models';
+type ActiveView = 'create' | 'decks' | 'push' | 'models';
 type TestResult = { ok: boolean; message: string; latencyMs?: number };
+type PdfImportStage = 'inspecting' | 'awaiting_confirmation' | 'running' | 'ready' | 'failed';
+type PdfImportState = {
+  id?: string;
+  filename: string;
+  stage: PdfImportStage;
+  progress: number;
+  message: string;
+  paperIds: string[];
+  error?: string;
+};
 
 const PLAN_META: Array<{
   id: Exclude<GenerationPlan, 'custom'>;
@@ -84,7 +93,6 @@ const PLAN_LABELS: Record<GenerationPlan, string> = {
 
 const NAV_ITEMS: Array<{ id: ActiveView; label: string; icon: typeof Sparkles }> = [
   { id: 'create', label: '生成卡片', icon: Sparkles },
-  { id: 'exams', label: '真题审核', icon: ClipboardCheck },
   { id: 'decks', label: '我的卡组', icon: Layers3 },
   { id: 'push', label: '推送学习', icon: Send },
   { id: 'models', label: '模型设置', icon: Settings2 },
@@ -191,6 +199,7 @@ export default function Home() {
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [fileName, setFileName] = useState('');
+  const [pdfImport, setPdfImport] = useState<PdfImportState | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { decks, storageError, saveDeck, deleteDeck } = useDecks();
@@ -288,6 +297,28 @@ export default function Home() {
   useEffect(() => {
     if (!selectedPushDeckId && decks[0]) setSelectedPushDeckId(decks[0].id);
   }, [decks, selectedPushDeckId]);
+
+  useEffect(() => {
+    if (pdfImport?.stage !== 'running' || !pdfImport.id) return;
+    let stopped = false;
+    const poll = async () => {
+      try {
+        const job = await readJson<PdfImportState>(
+          await fetch(`/api/pdf-import/${encodeURIComponent(pdfImport.id!)}`, { cache: 'no-store' }),
+          '读取 OCR 进度失败',
+        );
+        if (!stopped) setPdfImport(job);
+      } catch (error) {
+        if (!stopped) toast.error(error instanceof Error ? error.message : '读取 OCR 进度失败');
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 1_500);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [pdfImport?.id, pdfImport?.stage]);
 
   const toggleDarkMode = () => {
     const next = !darkMode;
@@ -500,27 +531,64 @@ export default function Home() {
   };
 
   const handleFile = async (file: File) => {
-    if (file.size > 20 * 1024 * 1024) {
-      toast.error('文件大小超过 20MB 限制');
+    const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+    const sizeLimit = isPdf ? 200 : 20;
+    if (file.size > sizeLimit * 1024 * 1024) {
+      toast.error(`文件大小超过 ${sizeLimit}MB 限制`);
       return;
     }
     setIsParsing(true);
     setFileName(file.name);
+    setPdfImport(isPdf ? {
+      filename: file.name,
+      stage: 'inspecting',
+      progress: 0,
+      message: '正在检测 PDF 是否包含可提取文字…',
+      paperIds: [],
+    } : null);
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const data = await readJson<{ content: string }>(
-        await fetch('/api/parse-file', { method: 'POST', body: formData }),
-        '文件解析失败',
-      );
-      setContent(data.content);
+      if (isPdf) {
+        const data = await readJson<
+          { kind: 'text'; content: string } | { kind: 'ocr_required'; job: PdfImportState }
+        >(await fetch('/api/pdf-import', { method: 'POST', body: formData }), 'PDF 检测失败');
+        if (data.kind === 'ocr_required') {
+          setPdfImport(data.job);
+          toast.info('该 PDF 提取不到文字，需要先进行 OCR 预审核');
+          return;
+        }
+        setContent(data.content);
+        setPdfImport(null);
+        toast.success(`已提取 PDF 文字：${file.name}`);
+      } else {
+        const data = await readJson<{ content: string }>(
+          await fetch('/api/parse-file', { method: 'POST', body: formData }),
+          '文件解析失败',
+        );
+        setContent(data.content);
+        toast.success(`已解析文件：${file.name}`);
+      }
       if (!deckName.trim()) setDeckName(file.name.replace(/\.[^.]+$/, ''));
-      toast.success(`已解析文件：${file.name}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '文件解析失败');
       setFileName('');
+      setPdfImport(null);
     } finally {
       setIsParsing(false);
+    }
+  };
+
+  const handleStartOcr = async () => {
+    if (!pdfImport?.id) return;
+    try {
+      const job = await readJson<PdfImportState>(
+        await fetch(`/api/pdf-import/${encodeURIComponent(pdfImport.id)}`, { method: 'POST' }),
+        '启动 OCR 失败',
+      );
+      setPdfImport(job);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '启动 OCR 失败');
     }
   };
 
@@ -612,6 +680,7 @@ export default function Home() {
     setAnalysis(null);
     setAnalysisKey('');
     setShowFullContent(true);
+    setPdfImport(null);
     setActiveView('create');
     window.scrollTo({ top: 0, behavior: 'smooth' });
     toast.success('已载入审核后的真题，请先分析内容再调用模型生成卡片');
@@ -670,7 +739,7 @@ export default function Home() {
       </header>
 
       <main className="bg-texture min-h-[calc(100vh-3.5rem)]">
-        {activeView === 'create' && (
+        {activeView === 'create' && pdfImport?.stage !== 'ready' && (
           <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6">
             <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
               <div>
@@ -751,12 +820,12 @@ export default function Home() {
                     onClick={() => fileInputRef.current?.click()}
                   >
                     {isParsing ? <Loader2 className="h-4 w-4 animate-spin text-indigo" /> : fileName ? <FileUp className="h-4 w-4 text-indigo" /> : <Upload className="h-4 w-4 text-muted-foreground" />}
-                    <span className="text-xs text-muted-foreground">{fileName || '拖入文本文件，或点击选择'}</span>
+                    <span className="text-xs text-muted-foreground">{fileName || '拖入文本或 PDF，或点击选择'}</span>
                     <input
                       ref={fileInputRef}
                       type="file"
                       className="hidden"
-                      accept=".txt,.md,.markdown,.csv,.json,.html,.htm,.xml,.yaml,.yml,.log,.js,.ts,.py,.java,.c,.cpp,.h,.css,.scss,.svg,.go,.rs,.rb,.php,.sh,.sql"
+                      accept=".pdf,.txt,.md,.markdown,.csv,.json,.html,.htm,.xml,.yaml,.yml,.log,.js,.ts,.py,.java,.c,.cpp,.h,.css,.scss,.svg,.go,.rs,.rb,.php,.sh,.sql"
                       onChange={(event) => {
                         const file = event.target.files?.[0];
                         if (file) void handleFile(file);
@@ -764,6 +833,37 @@ export default function Home() {
                       }}
                     />
                   </div>
+
+                  {pdfImport && (
+                    <div className={`mb-3 rounded-xl border p-4 ${pdfImport.stage === 'failed' ? 'border-destructive/30 bg-destructive/5' : 'border-indigo/20 bg-indigo-soft/35'}`}>
+                      <div className="flex items-start gap-3">
+                        {pdfImport.stage === 'inspecting' || pdfImport.stage === 'running'
+                          ? <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-indigo" />
+                          : <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-indigo" />}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold">
+                            {pdfImport.stage === 'awaiting_confirmation' ? '此 PDF 无法直接提取文字' : pdfImport.stage === 'failed' ? 'OCR 未完成' : '正在处理 PDF'}
+                          </p>
+                          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{pdfImport.error || pdfImport.message}</p>
+                          {pdfImport.stage === 'running' && (
+                            <div className="mt-3">
+                              <div className="mb-1 flex justify-between text-[11px] text-muted-foreground"><span>OCR 识别进度</span><span>{pdfImport.progress}%</span></div>
+                              <div className="h-2 overflow-hidden rounded-full bg-background"><div className="h-full rounded-full bg-indigo transition-all duration-500" style={{ width: `${pdfImport.progress}%` }} /></div>
+                            </div>
+                          )}
+                          {pdfImport.stage === 'awaiting_confirmation' && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <Button size="sm" onClick={() => void handleStartOcr()}>开始 OCR 并预审核</Button>
+                              <Button variant="ghost" size="sm" onClick={() => { setPdfImport(null); setFileName(''); }}>取消</Button>
+                            </div>
+                          )}
+                          {pdfImport.stage === 'failed' && (
+                            <Button variant="outline" size="sm" className="mt-3" onClick={() => { setPdfImport(null); setFileName(''); }}>重新选择文件</Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {analysisIsCurrent && !showFullContent ? (
                     <div className="rounded-lg border border-border bg-card-warm px-3 py-3">
@@ -796,7 +896,7 @@ export default function Home() {
                   )}
                   <div className="mt-1.5 flex justify-between text-[11px] text-muted-foreground">
                     <span>{content.length} 字</span>
-                    <span>支持 txt / md / csv / json / html</span>
+                    <span>支持 PDF / txt / md / csv / json / html</span>
                   </div>
                   <Button
                     variant="outline"
@@ -1223,8 +1323,12 @@ export default function Home() {
           </div>
         )}
 
-        {activeView === 'exams' && (
-          <ExamReview onUseForGeneration={handleUseExamForGeneration} />
+        {activeView === 'create' && pdfImport?.stage === 'ready' && (
+          <ExamReview
+            paperIds={pdfImport.paperIds}
+            onBack={() => setPdfImport(null)}
+            onUseForGeneration={handleUseExamForGeneration}
+          />
         )}
 
         {activeView === 'models' && (
