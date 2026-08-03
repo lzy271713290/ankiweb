@@ -6,9 +6,12 @@
 
 ```powershell
 $env:UV_CACHE_DIR="$PWD\.cache\uv-exam"
-uv venv .venv-exam
+uv python install 3.12
+uv venv .venv-exam --python 3.12
 uv pip install --python .venv-exam\Scripts\python.exe -r scripts\exam_pipeline\requirements.txt
 ```
+
+`onnxruntime==1.28.0` 需要 Python 3.11—3.14；推荐固定使用 uv 管理的 Python 3.12，系统中只有 Python 3.10 时不要直接复用。
 
 ## 运行三套试卷
 
@@ -28,6 +31,6 @@ uv pip install --python .venv-exam\Scripts\python.exe -r scripts\exam_pipeline\r
 
 审核页会展示结构化文字，并只对检测到的图表显示“题目原图”或“解析原图”；图片区域内的 OCR 文字会从对应文字版移除，避免重复，纯文字内容只保留 OCR 文本。OCR 原始结果保存在 `exam_questions`，人工修订保存在 `question_corrections`，重复执行 `--questions-only` 不会覆盖人工修订；题目图片及原页裁剪坐标记录在 `question_assets`。
 
-OCR 仍作为本机离线任务运行；处理结果已接入平台顶部“真题审核”，可修改题目字段、切换图片显示模式、确认整卷，并在确认后送入大模型拆卡。任意新 PDF 的网页上传、页段配置和异步任务队列尚未实现，后续再增加页面框选遮罩编辑器。
+OCR 仍作为本机离线任务运行；网页上传会先检测文字层，扫描件由用户确认后启动异步 OCR，完成后直接进入“OCR 预审核”，可修改题目字段、切换图片显示模式、确认整卷，并在确认后送入大模型拆卡。当前仍只支持下方固定的三套试卷页段；任意新 PDF 的卷别/页段配置尚未实现，后续再增加页面框选遮罩编辑器。
 
 经原页确认、需要跨电脑保留的少量修订可写入 `corrections.json`；流水线会在重建题目和图片后应用修订种子，但不会覆盖 SQLite 中已经存在的网页人工修改。

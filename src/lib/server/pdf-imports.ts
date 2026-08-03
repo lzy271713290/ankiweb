@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -130,6 +130,11 @@ export async function inspectUploadedPdf(file: File): Promise<PdfInspectionResul
       };
     }
     const documentId = createHash('sha256').update(bytes).digest('hex').slice(0, 16);
+    const reusableJob = await findReusablePdfImportJob(documentId);
+    if (reusableJob) {
+      await rm(directory, { recursive: true, force: true });
+      return { kind: 'ocr_required', job: reusableJob };
+    }
     const now = new Date().toISOString();
     const job: PdfImportJob = {
       id,
@@ -161,6 +166,27 @@ export async function readPdfImportJob(jobId: string): Promise<PdfImportJob> {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error('OCR 任务不存在或已过期');
     throw error;
   }
+}
+
+async function findReusablePdfImportJob(documentId: string): Promise<PdfImportJob | undefined> {
+  let entries;
+  try {
+    entries = await readdir(DATA_DIRECTORY, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
+  }
+  const matches: PdfImportJob[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    try {
+      const job = await readPdfImportJob(entry.name);
+      if (job.documentId === documentId && job.stage === 'ready') matches.push(job);
+    } catch {
+      // Ignore incomplete or expired task directories.
+    }
+  }
+  return matches.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
 }
 
 async function locateOcrPython(): Promise<string> {
@@ -197,6 +223,11 @@ export async function startPdfImportJob(jobId: string): Promise<PdfImportJob> {
     '--copy-source',
   ], {
     cwd: process.cwd(),
+    env: {
+      ...process.env,
+      PYTHONIOENCODING: 'utf-8',
+      PYTHONUTF8: '1',
+    },
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });

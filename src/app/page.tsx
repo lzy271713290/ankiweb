@@ -555,7 +555,9 @@ export default function Home() {
         >(await fetch('/api/pdf-import', { method: 'POST', body: formData }), 'PDF 检测失败');
         if (data.kind === 'ocr_required') {
           setPdfImport(data.job);
-          toast.info('该 PDF 提取不到文字，需要先进行 OCR 预审核');
+          toast.info(data.job.stage === 'ready'
+            ? '已找到该 PDF 的 OCR 结果，正在进入预审核'
+            : '该 PDF 提取不到文字，需要先进行 OCR 预审核');
           return;
         }
         setContent(data.content);
