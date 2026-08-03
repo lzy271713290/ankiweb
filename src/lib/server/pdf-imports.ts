@@ -17,6 +17,8 @@ export interface PdfImportJob {
   message: string;
   documentId: string;
   paperIds: string[];
+  totalPages?: number;
+  textLayerPages?: number;
   error?: string;
   createdAt: string;
   updatedAt: string;
@@ -54,7 +56,14 @@ async function saveJob(job: PdfImportJob): Promise<void> {
   await rename(temporaryFile, jobFile(job.id));
 }
 
-async function extractPdfText(bytes: Buffer): Promise<string> {
+interface PdfTextInspection {
+  text: string;
+  totalPages: number;
+  textLayerPages: number;
+  meaningfulCharacters: number;
+}
+
+async function inspectPdfTextLayer(bytes: Buffer): Promise<PdfTextInspection> {
   const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist/legacy/build/pdf.mjs');
   GlobalWorkerOptions.workerSrc = pathToFileURL(
     path.join(process.cwd(), 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.mjs'),
@@ -65,6 +74,9 @@ async function extractPdfText(bytes: Buffer): Promise<string> {
   });
   const document = await loadingTask.promise;
   const chunks: string[] = [];
+  let storedCharacters = 0;
+  let textLayerPages = 0;
+  let meaningfulCharacters = 0;
   try {
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
       const page = await document.getPage(pageNumber);
@@ -74,13 +86,29 @@ async function extractPdfText(bytes: Buffer): Promise<string> {
         .filter(Boolean)
         .join(' ')
         .trim();
-      if (pageText) chunks.push(pageText);
-      if (chunks.join('\n\n').length >= MAX_TEXT_LENGTH) break;
+      const pageCharacters = pageText.replace(/\s/g, '').length;
+      meaningfulCharacters += pageCharacters;
+      if (pageCharacters >= 10) textLayerPages++;
+      if (pageText && storedCharacters < MAX_TEXT_LENGTH) {
+        const remaining = MAX_TEXT_LENGTH - storedCharacters;
+        chunks.push(pageText.slice(0, remaining));
+        storedCharacters += Math.min(pageText.length, remaining);
+      }
     }
   } finally {
     await loadingTask.destroy();
   }
-  return chunks.join('\n\n').replace(/\u0000/g, '').trim();
+  return {
+    text: chunks.join('\n\n').replace(/\u0000/g, '').trim(),
+    totalPages: document.numPages,
+    textLayerPages,
+    meaningfulCharacters,
+  };
+}
+
+function hasUsableTextLayer(inspection: PdfTextInspection): boolean {
+  if (inspection.meaningfulCharacters < 80) return false;
+  return inspection.textLayerPages / inspection.totalPages >= 0.5;
 }
 
 export async function inspectUploadedPdf(file: File): Promise<PdfInspectionResult> {
@@ -93,13 +121,12 @@ export async function inspectUploadedPdf(file: File): Promise<PdfInspectionResul
   await mkdir(directory, { recursive: true });
   await writeFile(sourceFile(id), bytes);
   try {
-    const text = await extractPdfText(bytes);
-    const meaningfulCharacters = text.replace(/\s/g, '').length;
-    if (meaningfulCharacters >= 80) {
+    const inspection = await inspectPdfTextLayer(bytes);
+    if (hasUsableTextLayer(inspection)) {
       await rm(directory, { recursive: true, force: true });
       return {
         kind: 'text',
-        content: text.length > MAX_TEXT_LENGTH ? `${text.slice(0, MAX_TEXT_LENGTH)}\n\n[内容过长，已截取前 ${MAX_TEXT_LENGTH} 字]` : text,
+        content: inspection.text,
       };
     }
     const documentId = createHash('sha256').update(bytes).digest('hex').slice(0, 16);
@@ -109,9 +136,13 @@ export async function inspectUploadedPdf(file: File): Promise<PdfInspectionResul
       filename: file.name,
       stage: 'awaiting_confirmation',
       progress: 0,
-      message: '该 PDF 未检测到可用文字层，需要 OCR 识别后预审核。',
+      message: inspection.textLayerPages > 0
+        ? `仅 ${inspection.textLayerPages}/${inspection.totalPages} 页检测到可用文字，大部分页面仍是扫描图，需要 OCR 识别后预审核。`
+        : `共 ${inspection.totalPages} 页，未检测到可用文字层，需要 OCR 识别后预审核。`,
       documentId,
       paperIds: ['2017-11', '2017-05', '2016-11'].map((slug) => `${documentId}-${slug}`),
+      totalPages: inspection.totalPages,
+      textLayerPages: inspection.textLayerPages,
       createdAt: now,
       updatedAt: now,
     };
